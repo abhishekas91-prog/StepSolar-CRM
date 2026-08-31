@@ -1,0 +1,79 @@
+# Render Blueprint for the Step Solar backend (FastAPI + MongoDB).
+# This lets Render auto-provision / redeploy the service with the correct
+# Python runtime, working directory and start command.
+#
+# If the service already exists on Render, you can either:
+#   a) connect this repo as a Blueprint (New -> Blueprint), or
+#   b) update the existing service manually to match these values:
+#        Runtime      : Python
+#        Root directory : backend
+#        Build command  : pip install -r requirements.txt
+#        Start command  : uvicorn server:app --host 0.0.0.0 --port $PORT
+services:
+  - type: web
+    name: stepsolar-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: stepsolar
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRE_MINUTES
+        value: "480"
+      - key: DUPLICATE_WINDOW_MIN
+        value: "10"
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: ADMIN_EMAIL
+        value: super@stepsolar.in
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_NAME
+        value: Super Admin
+      - key: ADMIN_ROLE
+        value: Admin
+      - key: ADMIN_FORCE_PASSWORD_CHANGE
+        value: "true"
+      # Set to true + set ADMIN_PASSWORD to a known value to reset the admin
+      # login when it's lost. Set back to false after signing in.
+      - key: ADMIN_FORCE_RESET
+        value: "false"
+      - key: GOOGLE_SHEET_ID
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: GMAIL_TO
+        sync: false
+      - key: GMAIL_FROM_NAME
+        sync: false
+      # Custom WhatsApp Provider API (optional — leave CUSTOM_WHATSAPP_API_URL
+      # blank to disable; the feature no-ops cleanly when unset)
+      - key: CUSTOM_WHATSAPP_API_URL
+        sync: false
+      - key: CUSTOM_WHATSAPP_API_KEY
+        sync: false
+      - key: WHATSAPP_API_KEY_HEADER
+        sync: false
+      - key: WHATSAPP_AUTH_MODE
+        sync: false
+      - key: WHATSAPP_SENDER_ID
+        sync: false
+      - key: STEPSOLAR_BASE_URL
+        value: https://admin.stepsolar.in
+      - key: WHATSAPP_PAYLOAD_TEMPLATE
+        sync: false
+      - key: WHATSAPP_MAX_ATTEMPTS
+        value: "3"
+      - key: WHATSAPP_REQUEST_TIMEOUT_SECONDS
+        value: "10"

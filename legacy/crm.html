@@ -1,0 +1,2145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Step Solar CRM — Lead & Installation Pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+  :root{
+    --blue:#1B6FA8; --blue-deep:#12507B;
+    --green:#3FA535; --green-deep:#2C7C24;
+    --brown:#8A6C3F; --sun:#F5A623;
+    --sand:#F4F8F4; --paper:#FFFFFF;
+    --ink:#182420; --ink-soft:#4B5A54;
+    --line: rgba(24,36,32,0.12);
+    --danger:#C24A3E;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:'Inter',sans-serif; background:var(--sand); color:var(--ink); line-height:1.5; -webkit-font-smoothing:antialiased;}
+  h1,h2,h3,.display{font-family:'Space Grotesk',sans-serif; letter-spacing:-0.01em;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  button{font-family:'Inter',sans-serif; cursor:pointer;}
+  input,select,textarea{font-family:'Inter',sans-serif;}
+  ::selection{background:var(--sun); color:#2A1A00;}
+
+  #app{min-height:100vh; display:flex; flex-direction:column;}
+  header.top{
+    position:sticky; top:0; z-index:50; background:rgba(244,248,244,0.92); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .top-inner{max-width:1360px; margin:0 auto; padding:0 22px; height:72px; display:flex; align-items:center; justify-content:space-between; gap:20px;}
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand img{height:44px; width:auto;}
+  .brand-text b{font-family:'Space Grotesk'; font-size:1.02rem; display:block; line-height:1.1;}
+  .brand-text span{display:block; font-size:0.65rem; color:var(--ink-soft); font-family:'IBM Plex Mono'; letter-spacing:0.08em; text-transform:uppercase; margin-top:2px;}
+  .tabs{display:flex; gap:4px; background:var(--paper); border:1px solid var(--line); border-radius:999px; padding:4px;}
+  .tab{padding:8px 16px; border:none; background:transparent; border-radius:999px; font-size:0.85rem; font-weight:600; color:var(--ink-soft);}
+  .tab.active{background:linear-gradient(90deg,var(--blue),var(--green-deep)); color:#fff;}
+  .top-right{display:flex; align-items:center; gap:12px;}
+  .role-select{display:flex; align-items:center; gap:8px; font-size:0.8rem; color:var(--ink-soft);}
+  select.role-picker{
+    padding:9px 12px; border-radius:10px; border:1.5px solid var(--line); background:var(--paper); font-weight:600; color:var(--ink); font-size:0.85rem;
+  }
+  .btn{display:inline-flex; align-items:center; gap:7px; padding:10px 18px; border-radius:10px; border:none; font-weight:600; font-size:0.85rem; transition:transform .15s ease, box-shadow .15s ease;}
+  .btn-sun{background:var(--sun); color:#2A1A00; box-shadow:0 6px 16px -6px rgba(245,166,35,.7);}
+  .btn-sun:hover{transform:translateY(-1px);}
+  .btn-outline{background:transparent; border:1.5px solid var(--line); color:var(--ink);}
+  .btn-outline:hover{border-color:var(--blue); color:var(--blue);}
+  .btn-ghost{background:var(--sand); color:var(--ink-soft); border:1px solid var(--line);}
+  .btn-danger{background:rgba(194,74,62,0.1); color:var(--danger);}
+  .btn:disabled{opacity:0.4; cursor:not-allowed;}
+
+  .live-dot{width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 0 0 rgba(63,165,53,0.5); animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(63,165,53,0.55);}70%{box-shadow:0 0 0 8px rgba(63,165,53,0);}100%{box-shadow:0 0 0 0 rgba(63,165,53,0);}}
+
+  main{flex:1; max-width:1360px; margin:0 auto; padding:26px 22px 60px; width:100%;}
+
+  .stat-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:26px;}
+  @media (max-width:900px){ .stat-grid{grid-template-columns:repeat(2,1fr);} }
+  .stat-card{background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:20px 20px;}
+  .stat-card .k{font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-soft); font-weight:600;}
+  .stat-card .v{font-family:'Space Grotesk'; font-weight:700; font-size:1.8rem; margin-top:6px;}
+  .stat-card .v.blue{color:var(--blue-deep);} .stat-card .v.green{color:var(--green-deep);} .stat-card .v.sun{color:#8a5b0c;} .stat-card .v.brown{color:var(--brown);}
+
+  .panel{background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:24px; margin-bottom:22px;}
+  .panel h2{font-size:1.1rem; margin-bottom:16px;}
+  .funnel-row{display:flex; align-items:center; gap:14px; padding:8px 0;}
+  .funnel-label{flex:0 0 210px; font-size:0.82rem; color:var(--ink-soft); font-weight:500;}
+  .funnel-bar-track{flex:1; background:var(--sand); border-radius:8px; height:26px; overflow:hidden; position:relative;}
+  .funnel-bar-fill{height:100%; background:linear-gradient(90deg,var(--blue),var(--green)); border-radius:8px; display:flex; align-items:center; justify-content:flex-end; padding-right:8px; min-width:2px;}
+  .funnel-bar-fill span{color:#fff; font-family:'IBM Plex Mono'; font-size:0.72rem; font-weight:600;}
+
+  .filter-bar{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; align-items:center;}
+  .filter-bar input, .filter-bar select{padding:10px 12px; border-radius:10px; border:1.5px solid var(--line); background:var(--paper); font-size:0.85rem;}
+  .filter-bar input{flex:1; min-width:180px;}
+  table.leads{width:100%; border-collapse:collapse; font-size:0.86rem;}
+  table.leads th{text-align:left; padding:10px 12px; color:var(--ink-soft); font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em; border-bottom:1.5px solid var(--line);}
+  table.leads td{padding:12px; border-bottom:1px solid var(--line); vertical-align:middle;}
+  table.leads tr:hover td{background:var(--sand);}
+  table.leads tbody tr{cursor:pointer;}
+  .badge{display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; font-size:0.72rem; font-weight:600;}
+  .badge.completed{background:rgba(63,165,53,0.14); color:var(--green-deep);}
+  .badge.inprogress{background:rgba(27,111,168,0.14); color:var(--blue-deep);}
+  .badge.pending{background:rgba(24,36,32,0.08); color:var(--ink-soft);}
+  .chip-role{display:inline-block; padding:3px 9px; border-radius:999px; font-size:0.68rem; font-weight:700; font-family:'IBM Plex Mono'; letter-spacing:0.03em;}
+  .chip-role.Sales{background:rgba(27,111,168,0.14); color:var(--blue-deep);}
+  .chip-role.SiteSurvey{background:rgba(245,166,35,0.18); color:#8a5b0c;}
+  .chip-role.Installation{background:rgba(63,165,53,0.14); color:var(--green-deep);}
+  .chip-role.Accounts{background:rgba(138,108,63,0.18); color:var(--brown);}
+  .empty{text-align:center; padding:50px 20px; color:var(--ink-soft);}
+  .empty b{display:block; color:var(--ink); font-family:'Space Grotesk'; font-size:1.05rem; margin-bottom:6px;}
+
+  .detail-head{display:flex; justify-content:space-between; align-items:flex-start; gap:20px; flex-wrap:wrap; margin-bottom:20px;}
+  .detail-head h2{font-size:1.5rem;}
+  .detail-meta{display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:0.82rem; color:var(--ink-soft);}
+  .detail-meta b{color:var(--ink);}
+  .detail-grid{display:grid; grid-template-columns:1.3fr 1fr; gap:20px; align-items:start;}
+  @media (max-width:980px){ .detail-grid{grid-template-columns:1fr;} }
+
+  .stage{border:1px solid var(--line); border-radius:12px; margin-bottom:10px; overflow:hidden;}
+  .stage-head{display:flex; align-items:center; gap:12px; padding:14px 16px; cursor:pointer; background:var(--paper);}
+  .stage-num{flex:0 0 30px; height:30px; width:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono'; font-size:0.78rem; font-weight:600; border:2px solid var(--line); color:var(--ink-soft);}
+  .stage.completed .stage-num{background:var(--green-deep); border-color:var(--green-deep); color:#fff;}
+  .stage.inprogress .stage-num{background:var(--blue); border-color:var(--blue); color:#fff;}
+  .stage-title{flex:1;}
+  .stage-title .l{font-weight:600; font-size:0.92rem;}
+  .stage-title .s{font-size:0.72rem; color:var(--ink-soft); margin-top:2px;}
+  .stage-tags{display:flex; gap:6px; align-items:center;}
+  .tag-actor{font-size:0.68rem; padding:3px 8px; border-radius:6px; background:var(--sand); color:var(--ink-soft); font-family:'IBM Plex Mono'; font-weight:600;}
+  .stage-body{padding:0 16px 16px; display:none; border-top:1px solid var(--line);}
+  .stage.open .stage-body{display:block; padding-top:14px;}
+  .stage-body label{font-size:0.74rem; font-weight:600; color:var(--ink-soft); display:block; margin:10px 0 5px;}
+  .stage-body select, .stage-body textarea, .stage-body input{width:100%; padding:9px 11px; border-radius:8px; border:1.5px solid var(--line); font-size:0.85rem;}
+  .stage-body textarea{resize:vertical; min-height:56px;}
+  .doc-list{display:flex; flex-direction:column; gap:6px; margin:8px 0;}
+  .doc-item{display:flex; align-items:center; justify-content:space-between; background:var(--sand); border-radius:8px; padding:7px 10px; font-size:0.8rem;}
+  .doc-item .x{color:var(--danger); font-weight:700; cursor:pointer; padding:0 4px;}
+  .locked-note{font-size:0.75rem; color:var(--ink-soft); background:var(--sand); border-radius:8px; padding:10px 12px; margin-top:8px; display:flex; align-items:center; gap:8px;}
+
+  .qi-table{width:100%; border-collapse:collapse; margin:12px 0; font-size:0.84rem;}
+  .qi-table th{text-align:left; padding:8px; background:var(--sand); font-size:0.7rem; text-transform:uppercase; color:var(--ink-soft);}
+  .qi-table td{padding:7px 8px; border-bottom:1px solid var(--line);}
+  .qi-table input{border:1px solid transparent; background:transparent; width:100%; padding:5px 6px; border-radius:6px;}
+  .qi-table input:focus{border-color:var(--blue); background:var(--paper); outline:none;}
+  .qi-totals{margin-top:10px; font-size:0.86rem; display:flex; flex-direction:column; align-items:flex-end; gap:4px;}
+  .qi-totals .row{display:flex; gap:30px; justify-content:space-between; width:260px;}
+  .qi-totals .grand{font-family:'Space Grotesk'; font-weight:700; font-size:1.15rem; color:var(--green-deep); border-top:1.5px solid var(--line); padding-top:6px; margin-top:4px;}
+  .row-actions{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;}
+
+  .modal-backdrop{position:fixed; inset:0; background:rgba(10,20,14,0.55); display:none; align-items:flex-start; justify-content:center; padding:40px 16px; z-index:200; overflow-y:auto;}
+  .modal-backdrop.open{display:flex;}
+  .modal{background:var(--paper); border-radius:16px; padding:28px; width:100%; max-width:640px; margin-bottom:40px;}
+  .modal h3{margin-bottom:16px; font-size:1.2rem;}
+  .modal .field-row{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .modal label{font-size:0.78rem; font-weight:600; color:var(--ink-soft); display:block; margin:10px 0 5px;}
+  .modal input, .modal select{width:100%; padding:10px 12px; border-radius:9px; border:1.5px solid var(--line); font-size:0.88rem;}
+  .choice-group{display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;}
+  .choice{position:relative;}
+  .choice input{position:absolute; opacity:0; width:0; height:0;}
+  .choice span{display:inline-flex; padding:8px 13px; border-radius:999px; border:1.5px solid var(--line); background:var(--sand); font-size:0.78rem; color:var(--ink-soft); cursor:pointer; font-weight:500;}
+  .choice input:checked + span{background:linear-gradient(90deg,var(--blue),var(--green-deep)); color:#fff; border-color:transparent;}
+  .modal-actions{display:flex; justify-content:flex-end; gap:10px; margin-top:20px;}
+
+  .toast{position:fixed; bottom:24px; right:24px; background:var(--ink); color:#fff; padding:13px 20px; border-radius:10px; font-size:0.86rem; z-index:300; display:none; box-shadow:0 12px 30px rgba(0,0,0,0.3);}
+  .toast.show{display:block;}
+  .toast.err{background:var(--danger);}
+
+  .section-label{font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-soft); font-weight:700; margin-bottom:10px;}
+
+  /* Login gate */
+  .gate{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+        background:radial-gradient(700px 400px at 15% 10%, rgba(27,111,168,0.10), transparent 60%),
+                   radial-gradient(600px 400px at 90% 90%, rgba(63,165,53,0.12), transparent 60%);}
+  .gate-card{background:var(--paper); border:1px solid var(--line); border-radius:20px; padding:36px; max-width:420px; width:100%; box-shadow:0 20px 60px -20px rgba(18,80,123,0.25);}
+  .gate-card img{height:56px; margin-bottom:16px;}
+  .gate-card h1{font-size:1.4rem; margin-bottom:6px;}
+  .gate-card p{color:var(--ink-soft); font-size:0.9rem; margin-bottom:20px;}
+  .gate-card label{font-size:0.78rem; font-weight:600; color:var(--ink-soft); display:block; margin-bottom:6px;}
+  .gate-card input{width:100%; padding:12px 14px; border-radius:10px; border:1.5px solid var(--line); font-size:0.95rem; margin-bottom:14px;}
+  .gate-card input:focus{outline:none; border-color:var(--blue);}
+  .gate-card .err{color:var(--danger); font-size:0.82rem; margin-top:-6px; margin-bottom:10px; display:none;}
+  .gate-card .err.show{display:block;}
+
+  /* ===== CRM v2 — assignment, tasks, comments, activity ===== */
+  .assign-bar{display:flex; align-items:center; gap:14px; flex-wrap:wrap; background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:14px 18px; margin-bottom:18px;}
+  .assign-bar .k{font-size:0.72rem; text-transform:uppercase; letter-spacing:0.07em; color:var(--ink-soft); font-weight:700;}
+  .assign-bar select{padding:9px 12px; border-radius:10px; border:1.5px solid var(--line); background:var(--paper); font-size:0.85rem; font-weight:600;}
+  .assign-chip{display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:999px; background:rgba(27,111,168,0.12); color:var(--blue-deep); font-size:0.8rem; font-weight:600;}
+  .assign-chip.unassigned{background:rgba(245,166,35,0.18); color:#8a5b0c;}
+
+  .addon-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start;}
+  @media (max-width:980px){ .addon-grid{grid-template-columns:1fr;} }
+
+  .task-row{display:flex; align-items:flex-start; gap:10px; padding:9px 0; border-bottom:1px solid var(--line); font-size:0.86rem;}
+  .task-row:last-child{border-bottom:none;}
+  .task-row input[type=checkbox]{margin-top:3px; accent-color:var(--green-deep); width:16px; height:16px;}
+  .task-row .tt{flex:1;}
+  .task-row .tt.done{text-decoration:line-through; color:var(--ink-soft);}
+  .task-row .meta{font-size:0.72rem; color:var(--ink-soft); margin-top:2px;}
+  .task-row .x{color:var(--danger); cursor:pointer; font-weight:700; padding:0 4px;}
+  .task-add{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center;}
+  .task-add input[type=text]{flex:1; min-width:150px; padding:9px 11px; border-radius:8px; border:1.5px solid var(--line); font-size:0.84rem;}
+  .task-add input[type=date]{padding:8px 9px; border-radius:8px; border:1.5px solid var(--line); font-size:0.8rem;}
+  .task-add select{padding:8px 9px; border-radius:8px; border:1.5px solid var(--line); font-size:0.8rem;}
+
+  .comment-item{display:flex; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);}
+  .comment-item:last-child{border-bottom:none;}
+  .comment-avatar{flex:0 0 30px; height:30px; width:30px; border-radius:50%; background:linear-gradient(135deg,var(--blue),var(--green-deep)); color:#fff; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; font-family:'IBM Plex Mono';}
+  .comment-body .who{font-size:0.74rem; font-weight:600;}
+  .comment-body .who span{color:var(--ink-soft); font-weight:400; font-size:0.7rem;}
+  .comment-body .txt{font-size:0.86rem; margin-top:2px; white-space:pre-wrap; word-break:break-word;}
+  .comment-add{display:flex; gap:8px; margin-top:10px;}
+  .comment-add textarea{flex:1; padding:9px 11px; border-radius:8px; border:1.5px solid var(--line); font-size:0.85rem; resize:vertical; min-height:44px;}
+
+  .act-item{display:flex; gap:10px; padding:7px 0; font-size:0.8rem; border-bottom:1px dashed var(--line);}
+  .act-item:last-child{border-bottom:none;}
+  .act-item .dot{flex:0 0 8px; height:8px; width:8px; border-radius:50%; background:var(--sun); margin-top:6px;}
+  .act-item .who{font-weight:600;}
+  .act-item .when{color:var(--ink-soft); font-size:0.7rem;}
+  .act-item .detail{color:var(--ink-soft);}
+  .act-panel{max-height:340px; overflow-y:auto;}
+
+  .q-status{display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; font-size:0.74rem; font-weight:700;}
+  .q-status.Draft{background:rgba(24,36,32,0.08); color:var(--ink-soft);}
+  .q-status.Sent{background:rgba(27,111,168,0.14); color:var(--blue-deep);}
+  .q-status.Approved{background:rgba(63,165,53,0.14); color:var(--green-deep);}
+  .q-status.Rejected{background:rgba(194,74,62,0.14); color:var(--danger);}
+  .q-rev{font-family:'IBM Plex Mono'; font-size:0.7rem; color:var(--ink-soft);}
+
+  .pay-row{display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--line); font-size:0.8rem;}
+  .pay-row:last-child{border-bottom:none;}
+  .pay-row .amt{font-family:'IBM Plex Mono'; font-weight:600;}
+  .pay-row .x{color:var(--danger); cursor:pointer; font-weight:700; padding:0 4px;}
+  .pay-form{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:10px;}
+  .pay-form input, .pay-form select{padding:9px 10px; border-radius:8px; border:1.5px solid var(--line); font-size:0.84rem;}
+  @media (max-width:680px){ .pay-form{grid-template-columns:1fr;} }
+
+  /* ===== Kanban board ===== */
+  .kanban-toolbar{display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:16px;}
+  .kanban-toolbar h2{font-size:1.1rem;}
+  .kanban{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; align-items:start;}
+  @media (max-width:700px){ .kanban{grid-template-columns:1fr;} }
+  .kanban-col{background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:10px; min-height:140px; transition:background .15s ease, border-color .15s ease;}
+  .kanban-col.drag-over{background:#eef5fb; border-color:var(--blue);}
+  .kanban-col-head{display:flex; align-items:center; gap:8px;}
+  .kanban-num{flex:0 0 22px; height:22px; width:22px; border-radius:50%; background:var(--sand); border:1.5px solid var(--line); color:var(--ink-soft); font-family:'IBM Plex Mono'; font-size:0.68rem; font-weight:600; display:flex; align-items:center; justify-content:center;}
+  .kanban-title{flex:1; font-weight:600; font-size:0.82rem; line-height:1.25;}
+  .kanban-count{font-family:'IBM Plex Mono'; font-size:0.7rem; font-weight:600; color:var(--blue-deep); background:rgba(27,111,168,0.12); padding:2px 8px; border-radius:999px;}
+  .kanban-col-sub{margin:6px 0 8px;}
+  .kanban-cards{display:flex; flex-direction:column; gap:8px;}
+  .kanban-card{background:var(--sand); border:1px solid var(--line); border-radius:10px; padding:10px 12px; cursor:grab; transition:transform .1s ease, box-shadow .1s ease;}
+  .kanban-card:hover{transform:translateY(-1px); box-shadow:0 8px 18px -10px rgba(18,80,123,0.35);}
+  .kanban-card:active{cursor:grabbing;}
+  .kc-top{display:flex; justify-content:space-between; gap:6px; font-size:0.7rem;}
+  .kc-code{color:var(--blue-deep); font-weight:600;}
+  .kc-assigned{color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px;}
+  .kc-name{font-weight:600; font-size:0.86rem; margin-top:3px; color:var(--ink);}
+  .kc-meta{font-size:0.72rem; color:var(--ink-soft); margin-top:4px;}
+  .kanban-empty{font-size:0.74rem; color:var(--ink-soft); text-align:center; padding:18px 0; border:1px dashed var(--line); border-radius:8px;}
+  .kanban-done{display:flex; flex-wrap:wrap; gap:8px;}
+  .done-chip{background:rgba(63,165,53,0.14); color:var(--green-deep); font-size:0.78rem; font-weight:600; padding:6px 12px; border-radius:999px;}
+
+  /* ===== Solar / survey / inventory / ROI panels ===== */
+  .solar-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px 14px;}
+  @media (max-width:680px){ .solar-grid{grid-template-columns:1fr;} }
+  .solar-grid label{font-size:0.72rem; font-weight:600; color:var(--ink-soft); display:block; margin:8px 0 4px;}
+  .solar-grid input, .solar-grid select{width:100%; padding:9px 11px; border-radius:8px; border:1.5px solid var(--line); font-size:0.85rem;}
+  .tracking-link{display:flex; align-items:center; gap:8px; background:var(--sand); border-radius:8px; padding:8px 10px; margin-top:10px; font-size:0.8rem; word-break:break-all;}
+  .tracking-link code{font-family:'IBM Plex Mono'; font-size:0.74rem; color:var(--blue-deep); flex:1;}
+  .tracking-link button{background:var(--blue); color:#fff; border:none; border-radius:7px; padding:6px 10px; font-size:0.74rem; font-weight:600; cursor:pointer;}
+
+  .roi-box{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-top:12px;}
+  .roi-box .roi-card{background:var(--sand); border-radius:10px; padding:10px 12px;}
+  .roi-box .roi-card .k{font-size:0.66rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-soft); font-weight:700;}
+  .roi-box .roi-card .v{font-family:'Space Grotesk'; font-weight:700; font-size:1.05rem; margin-top:4px; color:var(--blue-deep);}
+
+  .inv-row{display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--line); font-size:0.8rem; flex-wrap:wrap;}
+  .inv-row:last-child{border-bottom:none;}
+  .inv-row .x{color:var(--danger); cursor:pointer; font-weight:700; padding:0 4px;}
+  .inv-add{display:grid; grid-template-columns:1fr 1fr 1fr 1fr 1fr; gap:8px; margin-top:10px;}
+  .inv-add input, .inv-add select{padding:9px 10px; border-radius:8px; border:1.5px solid var(--line); font-size:0.82rem;}
+  @media (max-width:700px){ .inv-add{grid-template-columns:1fr 1fr;} }
+  .itype-chip{display:inline-block; padding:2px 8px; border-radius:6px; font-size:0.66rem; font-weight:700; font-family:'IBM Plex Mono';}
+  .it-panel{background:rgba(63,165,53,0.12); color:var(--green-deep);}
+  .it-inverter{background:rgba(27,111,168,0.12); color:var(--blue-deep);}
+  .it-structure{background:rgba(245,166,35,0.18); color:#8a5b0c;}
+  .it-bos{background:rgba(138,108,63,0.18); color:var(--brown);}
+  .it-other{background:rgba(24,36,32,0.08); color:var(--ink-soft);}
+
+  /* ===== Ops view (inventory + WhatsApp logs) ===== */
+  .ops-grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start;}
+  @media (max-width:980px){ .ops-grid{grid-template-columns:1fr;} }
+  .wlog-row{display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px dashed var(--line); font-size:0.8rem; flex-wrap:wrap;}
+  .wlog-row:last-child{border-bottom:none;}
+  .wlog-status{font-family:'IBM Plex Mono'; font-size:0.7rem; font-weight:700; padding:2px 9px; border-radius:999px;}
+  .wlog-status.SUCCESS{background:rgba(63,165,53,0.14); color:var(--green-deep);}
+  .wlog-status.FAILED{background:rgba(194,74,62,0.14); color:var(--danger);}
+  .wlog-status.PENDING{background:rgba(245,166,35,0.18); color:#8a5b0c;}
+  .wlog-status.SKIPPED{background:rgba(24,36,32,0.08); color:var(--ink-soft);}
+  .wlog-scroll{max-height:420px; overflow-y:auto;}
+  .chip-role.other{background:rgba(24,36,32,0.08); color:var(--ink-soft);}
+  .wa-settings-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px;}
+  .wa-settings-grid label{display:flex; flex-direction:column; gap:6px; font-size:0.74rem; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em;}
+  .wa-settings-grid input,.wa-settings-grid select,.wa-settings-grid textarea{
+    text-transform:none; font-weight:500; font-size:0.85rem; color:var(--ink);
+    padding:10px 12px; border:1.5px solid var(--line); border-radius:10px; background:var(--paper); font-family:'IBM Plex Mono';
+  }
+  .wa-settings-grid .wa-wide{grid-column:1/-1;}
+  .wa-settings-grid textarea{resize:vertical;}
+  .wa-actions{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:16px; padding-top:14px; border-top:1px dashed var(--line);}
+  .wa-test-phone{width:180px; padding:9px 12px; border:1.5px solid var(--line); border-radius:10px; font-family:'IBM Plex Mono'; font-size:0.85rem; background:var(--paper);}
+  .wa-msg{font-size:0.75rem; color:var(--ink-soft); margin-left:4px;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="modal-backdrop" id="modalBackdrop"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ======================= CONFIG ======================= */
+const API_BASE = window.location.origin; // served on same origin as backend
+const LEADS_URL = API_BASE + '/api/crm/leads';
+const META_URL  = API_BASE + '/api/crm/meta';
+const AUTH_KEY = 'stepsolar.crm.auth'; // {token, role, email, full_name}
+
+const STAGE_TEMPLATE = [
+  {key:'lead_captured',           label:'Lead Captured',             actor:'Customer', owner:'Sales'},
+  {key:'site_survey_scheduled',   label:'Site Survey Scheduled',     actor:'Engineer', owner:'Sales'},
+  {key:'survey_completed',        label:'Site Survey Completed',     actor:'Engineer', owner:'Site Survey'},
+  {key:'quotation_sent',          label:'Quotation Sent',            actor:'Sales',    owner:'Sales'},
+  {key:'docs_verified',           label:'Documents Verified',        actor:'Accounts', owner:'Accounts'},
+  {key:'discom_applied',          label:'DISCOM Application',        actor:'Discom',   owner:'Accounts'},
+  {key:'material_dispatched',     label:'Material Dispatched',       actor:'Vendor',   owner:'Installation'},
+  {key:'installation_in_progress', label:'Installation In Progress', actor:'Engineer', owner:'Installation'},
+  {key:'net_metering_pending',    label:'Net Metering Pending',      actor:'Discom',   owner:'Installation'},
+  {key:'commissioned',            label:'Commissioned',              actor:'Discom',   owner:'Installation'},
+  {key:'subsidy_disbursed',       label:'Subsidy Disbursed',         actor:'REC',      owner:'Accounts'}
+];
+const ROLES = ['Sales','Site Survey','Installation','Accounts'];
+const SOLAR_SUBSIDY_STATUSES = ['Not Applied','Applied','Approved','Disbursed','Rejected'];
+
+function makeQuotationItems(monthlyBill){
+  const bill = Number(monthlyBill)||4000;
+  const kw = Math.max(1, Math.round((bill/8/120)*2)/2);
+  const total = kw*55000;
+  return {
+    systemSizeKw: kw,
+    items: [
+      {desc:`Solar PV Modules (Tier-1, ${kw} kW)`, qty:1, rate: Math.round(total*0.55)},
+      {desc:'Grid-Tie Inverter', qty:1, rate: Math.round(total*0.20)},
+      {desc:'Mounting Structure', qty:1, rate: Math.round(total*0.10)},
+      {desc:'Cabling, DCDB/ACDB & Balance of System', qty:1, rate: Math.round(total*0.08)},
+      {desc:'Installation & Commissioning Charges', qty:1, rate: Math.round(total*0.07)}
+    ],
+    gstPercent: 12
+  };
+}
+
+/* ======================= STATE ======================= */
+function _loadAuth(){
+  try{
+    const raw = localStorage.getItem(AUTH_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+const _savedAuth = _loadAuth();
+
+let DATA = {leads:[]};
+let STATE = {
+  token: _savedAuth?.access_token || '',
+  role: _savedAuth?.role || '',
+  email: _savedAuth?.email || '',
+  fullName: _savedAuth?.full_name || '',
+  userId: _savedAuth?.id || '',
+  authed: false,
+  view: 'dashboard',
+  activeLeadId: null,
+  search: '',
+  stageFilter: 'all',
+  openStages: {},
+  loaded: false,
+  lastSync: null,
+  syncing: false,
+  gateError: ''
+};
+let POLL_TIMER = null;
+
+/* ======================= API ======================= */
+async function api(path, opts={}){
+  const url = API_BASE + path;
+  const headers = Object.assign(
+    STATE.token ? {'Authorization': 'Bearer ' + STATE.token} : {},
+    opts.headers || {}
+  );
+  if(opts.body && !(opts.body instanceof FormData)){
+    headers['Content-Type'] = 'application/json';
+  }
+  const res = await fetch(url, {...opts, headers});
+  if(res.status === 401){
+    STATE.authed = false;
+    localStorage.removeItem(AUTH_KEY);
+    STATE.token = ''; STATE.role = ''; STATE.email = ''; STATE.fullName = ''; STATE.userId = '';
+    stopPolling();
+    render();
+    throw new Error('unauthorized');
+  }
+  if(res.status === 403){
+    const isJson2 = (res.headers.get('content-type')||'').includes('application/json');
+    const data2 = isJson2 ? await res.json() : null;
+    throw new Error((data2 && data2.detail) || 'You do not have permission to do that.');
+  }
+  const isJson = (res.headers.get('content-type')||'').includes('application/json');
+  const data = isJson ? await res.json() : null;
+  if(!res.ok){
+    const msg = (data && (data.detail || data.message)) || ('HTTP ' + res.status);
+    throw new Error(msg);
+  }
+  return data;
+}
+
+async function refreshLeads(silent){
+  if(STATE.syncing) return;
+  STATE.syncing = true;
+  try{
+    const items = await api('/api/crm/leads');
+    const prevSig = leadsSignature(DATA.leads);
+    DATA.leads = items;
+    STATE.loaded = true;
+    STATE.lastSync = new Date();
+    if(!silent){
+      render();
+    } else {
+      updateLiveIndicator();
+      // Re-render on data change, but skip while a modal is open or the
+      // user is actively typing (would clobber focus/uncommitted input).
+      const modalOpen = document.getElementById('modalBackdrop')?.classList.contains('open');
+      const editing = document.activeElement && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
+      const changed = leadsSignature(items) !== prevSig;
+      if(changed && !modalOpen && !editing){
+        render();
+      }
+    }
+  }catch(e){
+    if(e.message !== 'unauthorized'){
+      console.error('Refresh failed', e);
+      if(!silent) showToast('Sync failed: ' + e.message, true);
+    }
+  }finally{
+    STATE.syncing = false;
+  }
+}
+
+/** Cheap change-detection signature — id + updated_at + stage statuses
+ *  + counts of comments/open tasks + assignment + doc/invoice/quotation state. */
+function leadsSignature(leads){
+  return (leads || []).map(l => {
+    const stat = (l.stages || []).map(s => s.status || '').join('|');
+    const extra = [
+      (l.comments||[]).length,
+      (l.tasks||[]).filter(t=>t.status==='open').length,
+      l.assigned_to || '',
+      (l.docCount != null ? l.docCount : (l.stages||[]).reduce((a,s)=>a+(s.documents||[]).length,0)),
+      l.invoice ? (l.invoice.paymentStatus||'') + ':' + (l.invoice.paidAmount||0) : '',
+      l.quotation ? (l.quotation.status||'') : ''
+    ].join('|');
+    return `${l.id}:${l.updated_at || l.updatedAt || ''}:${stat}:${extra}`;
+  }).join(';');
+}
+
+function startPolling(){
+  stopPolling();
+  POLL_TIMER = setInterval(()=>refreshLeads(true), 5000);
+}
+function stopPolling(){
+  if(POLL_TIMER){ clearInterval(POLL_TIMER); POLL_TIMER = null; }
+}
+
+/* ======================= HELPERS ======================= */
+// Escape untrusted lead/user data before inserting into innerHTML — prevents
+// stored XSS from lead fields (full_name, notes, uploaded doc names, etc.)
+// that originate from the public website form and are attacker-controlled.
+function esc(v){
+  return String(v==null ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function fmtINR(n){ return '₹' + Math.round(n||0).toLocaleString('en-IN'); }
+function fmtDate(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) + ' ' + d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+}
+function currentStageIndex(lead){
+  const i = (lead.stages || []).findIndex(s => s.status !== 'Completed');
+  return i === -1 ? (lead.stages || []).length-1 : i;
+}
+function overallStatus(lead){
+  const stages = lead.stages || [];
+  if(stages.length === 0) return 'New';
+  const allDone = stages.every(s=>s.status==='Completed');
+  if(allDone) return 'Completed';
+  const anyProgress = stages.some(s=>s.status!=='Pending');
+  return anyProgress ? 'In Progress' : 'New';
+}
+function roleClass(role){ return (role||'').replace(/\s+/g,''); }
+function findLead(id){ return DATA.leads.find(l=>l.id===id); }
+function showToast(msg, isErr){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show' + (isErr?' err':'');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 2800);
+}
+// Camel/snake normaliser — website leads use snake_case; CRM uses camelCase display fields.
+function displayLead(l){
+  return {
+    ...l,
+    name: l.name || l.full_name || '',
+    contact: l.contact || l.phone || '',
+    propertyType: l.propertyType || l.property_type || '',
+    monthlyBill: l.monthlyBill != null ? l.monthlyBill : (l.monthly_bill != null ? l.monthly_bill : 0),
+    roofType: l.roofType || l.roof_type || '',
+    timeline: l.timeline || '',
+    createdAt: l.createdAt || l.created_at || ''
+  };
+}
+
+/* ======================= RENDER ======================= */
+function render(){
+  const app = document.getElementById('app');
+  if(!STATE.authed){ app.innerHTML = renderGate(); wireGate(); return; }
+  if(!STATE.loaded){ app.innerHTML = renderHeader() + '<main><div style="padding:60px;text-align:center;color:#4B5A54;">Loading CRM data…</div></main>'; return; }
+  app.innerHTML = renderHeader() + '<main>' + (
+    STATE.view==='dashboard' ? renderDashboard() :
+    STATE.view==='leads' ? renderLeadsView() :
+    STATE.view==='kanban' ? renderKanbanView() :
+    STATE.view==='detail' ? renderLeadDetail() :
+    STATE.view==='ops' && STATE.role==='Admin' ? renderOpsView() :
+    STATE.view==='users' && STATE.role==='Admin' ? renderUsersView() : ''
+  ) + '</main>';
+  if(STATE.view==='users' && STATE.role==='Admin') wireUsersView();
+}
+
+function updateLiveIndicator(){
+  const el = document.getElementById('lastSyncTxt');
+  if(el && STATE.lastSync) el.textContent = STATE.lastSync.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+/* ---- Login gate ---- */
+function renderGate(){
+  const errShow = STATE.gateError ? 'show' : '';
+  const errText = STATE.gateError || 'Invalid email or password — please try again.';
+  return `
+  <div class="gate">
+    <div class="gate-card">
+      <img src="/logo.jpg" alt="Step Solar" onerror="this.style.display='none'">
+      <h1>Step Solar CRM</h1>
+      <p>Sign in with your Step Solar account to access the lead pipeline.</p>
+      <label>Email</label>
+      <input id="emailInput" type="email" placeholder="you@stepsolar.in" autocomplete="username" data-testid="gate-email-input">
+      <label style="margin-top:10px;">Password</label>
+      <input id="passwordInput" type="password" placeholder="Your password" autocomplete="current-password" data-testid="gate-password-input">
+      <div class="err ${errShow}" id="gateErr" data-testid="gate-error">${errText}</div>
+      <button class="btn btn-sun" style="width:100%; padding:12px; font-size:0.95rem; margin-top:8px;" id="gateSubmit" data-testid="gate-submit">Sign in</button>
+      <p style="font-size:0.72rem; color:var(--ink-soft); margin-top:14px;">Don't have an account? Ask your admin to create one for you.</p>
+    </div>
+  </div>`;
+}
+function wireGate(){
+  const emailInput = document.getElementById('emailInput');
+  const passInput = document.getElementById('passwordInput');
+  const btn = document.getElementById('gateSubmit');
+  const submit = async ()=>{
+    const email = (emailInput.value || '').trim();
+    const password = passInput.value || '';
+    if(!email || !password){
+      STATE.gateError = 'Please enter your email and password.';
+      render();
+      return;
+    }
+    STATE.gateError = '';
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try{
+      const res = await fetch(API_BASE + '/api/auth/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email, password})
+      });
+      const data = await res.json().catch(()=>null);
+      if(!res.ok){
+        throw new Error((data && data.detail) || 'Invalid email or password.');
+      }
+      STATE.token = data.access_token;
+      STATE.role = data.role;
+      STATE.email = data.email;
+      STATE.fullName = data.full_name;
+      STATE.userId = data.id;
+      localStorage.setItem(AUTH_KEY, JSON.stringify(data));
+      STATE.authed = true;
+      STATE.gateError = '';
+      if(data.must_change_password){
+        render();
+        openForceChangePasswordModal();
+        return;
+      }
+      await refreshLeads();
+      startPolling();
+      loadTeam();
+    }catch(e){
+      STATE.token = ''; STATE.role = '';
+      STATE.gateError = e.message || 'Sign in failed.';
+      render();
+    }
+  };
+  btn.addEventListener('click', submit);
+  passInput.addEventListener('keydown', e=>{ if(e.key==='Enter') submit(); });
+  emailInput.addEventListener('keydown', e=>{ if(e.key==='Enter') passInput.focus(); });
+  emailInput.focus();
+}
+
+function renderHeader(){
+  const syncTxt = STATE.lastSync ? STATE.lastSync.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
+  return `
+  <header class="top"><div class="top-inner">
+    <div class="brand">
+      <img src="/logo.jpg" alt="Step Solar" onerror="this.style.display='none'">
+      <div class="brand-text">
+        <b>Step Solar CRM</b>
+        <span>Lead &amp; Installation Pipeline</span>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab ${STATE.view==='dashboard'?'active':''}" onclick="goView('dashboard')" data-testid="tab-dashboard">Dashboard</button>
+      <button class="tab ${STATE.view==='leads'||STATE.view==='detail'?'active':''}" onclick="goView('leads')" data-testid="tab-leads">Leads</button>
+      <button class="tab ${STATE.view==='kanban'?'active':''}" onclick="goView('kanban')" data-testid="tab-kanban">Kanban</button>
+      ${STATE.role==='Admin' ? `<button class="tab ${STATE.view==='ops'?'active':''}" onclick="goView('ops')" data-testid="tab-ops">Inventory &amp; WhatsApp</button>` : ''}
+      ${STATE.role==='Admin' ? `<button class="tab ${STATE.view==='users'?'active':''}" onclick="goView('users')" data-testid="tab-users">Users</button>` : ''}
+    </div>
+    <div class="top-right">
+      <div class="role-select" title="Live sync (5s)"><span class="live-dot"></span><span style="font-family:'IBM Plex Mono';font-size:0.72rem;">Synced <span id="lastSyncTxt">${syncTxt}</span></span></div>
+      <div class="role-select" title="${STATE.email}" data-testid="signed-in-as">
+        <b>${STATE.fullName || STATE.email}</b>&nbsp;·&nbsp;${STATE.role}
+      </div>
+      <button class="btn btn-sun" onclick="openNewLeadModal()" data-testid="new-lead-btn">+ New Lead</button>
+      <button class="btn btn-ghost" onclick="signOut()" title="Sign out" data-testid="sign-out">⎋</button>
+    </div>
+  </div></header>`;
+}
+
+function signOut(){
+  localStorage.removeItem(AUTH_KEY);
+  STATE.token = ''; STATE.role = ''; STATE.email = ''; STATE.fullName = ''; STATE.userId = '';
+  STATE.authed = false; STATE.loaded = false;
+  stopPolling(); render();
+}
+function goView(v){ STATE.view=v; STATE.activeLeadId=null; render(); }
+
+/* ---- Dashboard ---- */
+function renderDashboard(){
+  const leads = DATA.leads.map(displayLead);
+  const total = leads.length;
+  const completed = leads.filter(l=>overallStatus(l)==='Completed').length;
+  const inProgress = leads.filter(l=>overallStatus(l)==='In Progress').length;
+  const newLeads = leads.filter(l=>overallStatus(l)==='New').length;
+
+  const stageCounts = STAGE_TEMPLATE.map((t,i)=>({
+    label:t.label,
+    count: leads.filter(l=>currentStageIndex(l)===i && overallStatus(l)!=='Completed').length
+  }));
+  const maxCount = Math.max(1, ...stageCounts.map(s=>s.count));
+
+  const myTasks = STATE.role==='Admin' ? total : leads.filter(l=>{
+    if(overallStatus(l)==='Completed') return false;
+    if(l.assigned_to===STATE.userId) return true;
+    const idx = currentStageIndex(l);
+    return (l.stages||[])[idx] && l.stages[idx].owner===STATE.role;
+  }).length;
+  const unassigned = leads.filter(l=> overallStatus(l)!=='Completed' && !l.assigned_to).length;
+
+  return `
+  <div class="stat-grid">
+    <div class="stat-card" data-testid="stat-total"><div class="k">Total Leads</div><div class="v blue">${total}</div></div>
+    <div class="stat-card" data-testid="stat-new"><div class="k">New / Unassigned</div><div class="v sun">${newLeads}</div></div>
+    <div class="stat-card" data-testid="stat-inprogress"><div class="k">In Progress</div><div class="v blue">${inProgress}</div></div>
+    <div class="stat-card" data-testid="stat-completed"><div class="k">Fully Commissioned</div><div class="v green">${completed}</div></div>
+  </div>
+  ${STATE.role!=='Admin' ? `<div class="panel"><h2>My Pending Tasks — ${STATE.role}</h2><p style="color:var(--ink-soft); font-size:0.9rem;">${myTasks} lead(s) currently waiting on your action (assigned to you, or in your team's stage). <a href="#" onclick="goView('leads'); return false;" style="color:var(--blue); font-weight:600;">View my tasks →</a></p></div>` : ''}
+  ${(STATE.role==='Admin'||STATE.role==='Sales') ? `<div class="panel"><h2>Unassigned Queue</h2><p style="color:var(--ink-soft); font-size:0.9rem;">${unassigned} lead(s) have no owner assigned yet. <a href="#" onclick="goView('leads'); return false;" style="color:var(--blue); font-weight:600;">Assign them →</a></p></div>` : ''}
+  <div class="panel">
+    <h2>Pipeline Funnel — where leads are stuck right now</h2>
+    ${stageCounts.map(s=>`
+      <div class="funnel-row">
+        <div class="funnel-label">${s.label}</div>
+        <div class="funnel-bar-track">
+          <div class="funnel-bar-fill" style="width:${Math.max(6,(s.count/maxCount)*100)}%;"><span>${s.count>0?s.count:''}</span></div>
+        </div>
+      </div>`).join('')}
+  </div>
+  <div class="panel">
+    <h2>Recent Leads</h2>
+    ${renderLeadsTable(leads.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5))}
+  </div>`;
+}
+
+/* ---- Leads list ---- */
+function renderLeadsView(){
+  let leads = DATA.leads.map(displayLead);
+  if(STATE.role!=='Admin'){
+    leads = leads.filter(l=> {
+      if(overallStatus(l)==='Completed') return false;
+      if(l.assigned_to===STATE.userId) return true;
+      const idx = currentStageIndex(l);
+      return (l.stages||[])[idx] && l.stages[idx].owner===STATE.role;
+    });
+  }
+  if(STATE.search){
+    const q = STATE.search.toLowerCase();
+    leads = leads.filter(l => (l.name||'').toLowerCase().includes(q) || (l.contact||'').includes(q) || (l.code||'').toLowerCase().includes(q));
+  }
+  if(STATE.stageFilter!=='all'){
+    leads = leads.filter(l => currentStageIndex(l)===Number(STATE.stageFilter));
+  }
+  leads = leads.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+
+  return `
+  <div class="panel">
+    <h2>${STATE.role==='Admin' ? 'All Leads' : `My Tasks — ${STATE.role}`}</h2>
+    <div class="filter-bar">
+      <input type="text" placeholder="Search name, phone or code…" value="${STATE.search}" oninput="STATE.search=this.value; render();" data-testid="leads-search">
+      <select onchange="STATE.stageFilter=this.value; render();" data-testid="stage-filter">
+        <option value="all">All stages</option>
+        ${STAGE_TEMPLATE.map((t,i)=>`<option value="${i}" ${STATE.stageFilter==String(i)?'selected':''}>${t.label}</option>`).join('')}
+      </select>
+    </div>
+    ${renderLeadsTable(leads)}
+  </div>`;
+}
+
+function renderLeadsTable(leads){
+  if(leads.length===0){
+    return `<div class="empty"><b>No leads here yet</b>Add a new lead, or check another filter / role.</div>`;
+  }
+  return `
+  <table class="leads">
+    <thead><tr><th>Code</th><th>Name</th><th>Contact</th><th>Property</th><th>Current Stage</th><th>Owner</th><th>Assigned</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody>
+      ${leads.map(l=>{
+        const idx = currentStageIndex(l);
+        const st = (l.stages||[])[idx] || {label:'—', owner:'—'};
+        const ov = overallStatus(l);
+        const badgeClass = ov==='Completed'?'completed':(ov==='In Progress'?'inprogress':'pending');
+        return `<tr onclick="openLead('${l.id}')" data-testid="lead-row-${l.code||l.id}">
+          <td class="mono">${esc(l.code||'—')}</td>
+          <td><b>${esc(l.name)}</b></td>
+          <td class="mono">${esc(l.contact)}</td>
+          <td>${esc(l.propertyType)}</td>
+          <td>${st.label}</td>
+          <td><span class="chip-role ${roleClass(st.owner)}">${st.owner}</span></td>
+          <td>${l.assigned_name ? esc(l.assigned_name) : '<span style="color:#8a5b0c;font-size:0.74rem;">Unassigned</span>'}</td>
+          <td><span class="badge ${badgeClass}">${ov}</span></td>
+          <td style="font-size:0.78rem; color:var(--ink-soft);">${fmtDate(l.createdAt)}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
+}
+
+function openLead(id){ STATE.activeLeadId=id; STATE.view='detail'; STATE.openStages={}; render(); }
+
+/* ---- Kanban board ---- */
+function renderKanbanView(){
+  const leads = DATA.leads.map(displayLead);
+  const columns = STAGE_TEMPLATE.map((t,i)=>{
+    const items = leads.filter(l => {
+      const idx = currentStageIndex(l);
+      return idx===i && overallStatus(l)!=='Completed';
+    });
+    return {stage:t, index:i, items};
+  });
+  const completedLeads = leads.filter(l=>overallStatus(l)==='Completed');
+
+  return `
+  <div class="kanban-toolbar">
+    <h2>Installation Kanban — move a lead by dragging its card</h2>
+    <span style="font-size:0.8rem; color:var(--ink-soft);">Only stages owned by your role (or Admin) can be updated — other columns show 🔒.</span>
+  </div>
+  <div class="kanban" id="kanbanBoard">
+    ${columns.map(col=>`
+      <div class="kanban-col" data-stage="${col.stage.key}" data-stage-index="${col.index}"
+           ondragover="event.preventDefault(); this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="dropOnStage(event, ${col.index})" data-testid="kanban-col-${col.index}">
+        <div class="kanban-col-head">
+          <span class="kanban-num">${col.index+1}</span>
+          <span class="kanban-title">${col.stage.label}</span>
+          <span class="kanban-count">${col.items.length}</span>
+        </div>
+        <div class="kanban-col-sub"><span class="chip-role ${roleClass(col.stage.owner)}">${col.stage.owner}</span></div>
+        <div class="kanban-cards">
+          ${col.items.length===0 ? '<div class="kanban-empty">No leads</div>' : col.items.map(l=>`
+            <div class="kanban-card" draggable="true" data-testid="kanban-card-${l.code||l.id}"
+                 ondragstart="dragStart(event,'${l.id}')" ondragend="this.parentElement.parentElement.classList.remove('drag-over')"
+                 onclick="openLead('${l.id}')">
+              <div class="kc-top"><span class="mono kc-code">${esc(l.code||'—')}</span><span class="kc-assigned">${l.assigned_name?esc(l.assigned_name):'·'}</span></div>
+              <div class="kc-name">${esc(l.name)}</div>
+              <div class="kc-meta">📍 ${esc(l.city||'')} · 💡 ${fmtINR(l.monthlyBill)}/mo</div>
+            </div>`).join('')}
+        </div>
+      </div>`).join('')}
+  </div>
+  <div class="panel" style="margin-top:22px;">
+    <h2>Commissioned &amp; Delivered (${completedLeads.length})</h2>
+    ${completedLeads.length===0 ? '<p style="font-size:0.85rem; color:var(--ink-soft);">No fully commissioned projects yet — keep going!</p>'
+      : `<div class="kanban-done">${completedLeads.map(l=>`
+          <span class="done-chip">✓ ${esc(l.code||'')} — ${esc(l.name)}</span>`).join('')}
+      </div>`}
+  </div>`;
+}
+
+let _dragLeadId = null;
+function dragStart(e, leadId){ _dragLeadId = leadId; e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', leadId); }
+async function dropOnStage(e, targetIndex){
+  e.preventDefault();
+  const leadId = _dragLeadId || e.dataTransfer.getData('text/plain');
+  _dragLeadId = null;
+  document.querySelectorAll('.kanban-col').forEach(c=>c.classList.remove('drag-over'));
+  if(!leadId) return;
+  const lead = findLead(leadId);
+  if(!lead) return;
+  if(currentStageIndex(lead)===targetIndex) return;
+  const stages = JSON.parse(JSON.stringify(lead.stages||[]));
+  if(targetIndex >= stages.length){ showToast('Invalid target stage', true); return; }
+  const target = stages[targetIndex];
+  if(target.status==='Completed'){ showToast('That stage is already completed', true); return; }
+  target.status = 'In Progress';
+  target.updatedAt = new Date().toISOString();
+  // auto-complete all prior stages so the lead's "current" stage is the target
+  for(let i=0;i<targetIndex;i++){ if(stages[i].status!=='Completed'){ stages[i].status='Completed'; stages[i].updatedAt=new Date().toISOString(); } }
+  try{
+    const updated = await api(`/api/crm/leads/${leadId}`, {method:'PATCH', body: JSON.stringify({stages})});
+    const idx = DATA.leads.findIndex(l=>l.id===leadId);
+    if(idx>=0) DATA.leads[idx] = updated;
+    showToast(`${lead.code} moved to "${target.label}"`);
+    render();
+  }catch(err){ showToast('Move failed: ' + err.message, true); }
+}
+
+/* ---- Lead detail ---- */
+function renderLeadDetail(){
+  const raw = findLead(STATE.activeLeadId);
+  if(!raw){ return `<div class="empty"><b>Lead not found</b></div>`; }
+  const lead = displayLead(raw);
+  const idx = currentStageIndex(lead);
+  const ov = overallStatus(lead);
+  const badgeClass = ov==='Completed'?'completed':(ov==='In Progress'?'inprogress':'pending');
+
+  return `
+  <button class="btn btn-outline" style="margin-bottom:16px;" onclick="goView('leads')" data-testid="back-to-leads">← Back to Leads</button>
+  <div class="detail-head">
+    <div>
+      <h2>${esc(lead.name)} <span class="mono" style="font-size:0.9rem; color:var(--ink-soft); font-weight:500;">${esc(lead.code||'')}</span></h2>
+      <div class="detail-meta">
+        <span>📞 <b>${esc(lead.contact)}</b></span>
+        <span>✉️ ${esc(lead.email||'')}</span>
+        <span>📍 ${esc(lead.city||'')}, ${esc(lead.state||'')} – ${esc(lead.pincode||'')}</span>
+        <span>🏠 ${esc(lead.propertyType)}</span>
+        <span>📐 ${esc(lead.roofType)}</span>
+        <span>💡 ${fmtINR(lead.monthlyBill)}/mo bill</span>
+        <span>🗓 ${esc(lead.timeline)}</span>
+        <span>Source: ${esc(lead.source||'—')}</span>
+        <span>Owner: <b>${lead.assigned_name || 'Unassigned'}</b></span>
+      </div>
+    </div>
+    <span class="badge ${badgeClass}" style="font-size:0.8rem; padding:7px 14px;">${ov}</span>
+  </div>
+
+  ${renderAssignmentBar(lead)}
+
+  <div class="detail-grid">
+    <div>
+      <div class="section-label">Installation Pipeline (${idx+1} of ${(lead.stages||[]).length})</div>
+      ${(lead.stages||[]).map((s,i)=>renderStage(lead,s,i)).join('')}
+    </div>
+    <div>
+      ${renderQuotationPanel(lead)}
+      ${renderInvoicePanel(lead)}
+    </div>
+  </div>
+
+  <div class="detail-grid" style="margin-top:22px;">
+    <div>
+      ${renderSurveyPanel(lead)}
+      ${renderSolarPanel(lead)}
+    </div>
+    <div>
+      ${renderTrackingPanel(lead)}
+      ${renderInventoryPanel(lead)}
+      ${renderRoiPanel(lead)}
+    </div>
+  </div>
+
+  <div class="addon-grid">
+    <div>${renderTasksPanel(lead)}</div>
+    <div>${renderCommentsPanel(lead)}</div>
+  </div>
+  ${renderActivityPanel(lead)}`;
+}
+
+function renderAssignmentBar(lead){
+  const canAssign = STATE.role==='Admin' || STATE.role==='Sales';
+  const current = lead.assigned_to || '';
+  const options = `<option value="">— Unassigned —</option>` + TEAM.map(u=>`
+    <option value="${esc(u.id)}" ${u.id===current?'selected':''}>${esc(u.full_name||u.email)} (${esc(u.role)})</option>`).join('');
+  return `<div class="assign-bar">
+    <span class="k">Assigned to</span>
+    ${canAssign
+      ? `<select onchange="assignLead('${lead.id}', this.value)" data-testid="assign-select">
+           ${options}
+         </select>
+         <span style="font-size:0.74rem; color:var(--ink-soft);">Only Admin / Sales can (re)assign</span>`
+      : `<span class="assign-chip ${lead.assigned_name?'':'unassigned'}">${esc(lead.assigned_name||'Unassigned')}</span>`}
+  </div>`;
+}
+
+async function assignLead(leadId, userId){
+  try{
+    const updated = await api(`/api/crm/leads/${leadId}/assign`, {method:'POST', body: JSON.stringify({assigned_to: userId||null})});
+    const idx = DATA.leads.findIndex(l=>l.id===leadId);
+    if(idx>=0) DATA.leads[idx] = updated;
+    showToast(userId ? `Assigned to ${updated.assigned_name||'team member'}` : 'Lead unassigned');
+    render();
+  }catch(e){ showToast('Assign failed: ' + e.message, true); }
+}
+
+function renderTasksPanel(lead){
+  const tasks = lead.tasks || [];
+  return `<div class="panel">
+    <h2>Tasks &amp; Follow-ups (${tasks.filter(t=>t.status==='open').length} open)</h2>
+    ${tasks.length===0 ? '<p style="font-size:0.84rem; color:var(--ink-soft);">No tasks yet.</p>' : tasks.map(t=>{
+      const done = t.status==='done';
+      const canDelete = STATE.role==='Admin' || t.created_by===STATE.userId;
+      return `<div class="task-row">
+        <input type="checkbox" ${done?'checked':''} onchange="toggleTask('${lead.id}','${t.id}',this.checked)" data-testid="task-toggle">
+        <div class="tt ${done?'done':''}">${esc(t.title)}</div>
+        <div style="flex:1; text-align:right; white-space:nowrap;">
+          ${t.assigned_name?`<span class="chip-role Sales">${esc(t.assigned_name)}</span>`:''}
+          ${t.due_at?`<span style="font-size:0.72rem;color:var(--ink-soft);margin-left:6px;">📅 ${esc(t.due_at)}</span>`:''}
+          ${canDelete?`<span class="x" onclick="deleteTask('${lead.id}','${t.id}')">✕</span>`:''}
+        </div>
+      </div>`;
+    }).join('')}
+    <div class="task-add">
+      <input type="text" id="taskTitleInput" placeholder="New task… e.g. Call customer for site visit" data-testid="task-title">
+      <input type="date" id="taskDueInput" title="Due date">
+      <select id="taskAssigneeInput" title="Assign to (optional)">
+        <option value="">— assign —</option>
+        ${TEAM.map(u=>`<option value="${esc(u.id)}">${esc(u.full_name||u.email)}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost" style="padding:8px 14px; font-size:0.8rem;" onclick="addTask('${lead.id}')" data-testid="task-add">+ Add</button>
+    </div>
+  </div>`;
+}
+
+async function addTask(leadId){
+  const title = (document.getElementById('taskTitleInput').value||'').trim();
+  if(!title){ showToast('Task title is required.', true); return; }
+  const due_at = document.getElementById('taskDueInput').value || null;
+  const assigned_to = document.getElementById('taskAssigneeInput').value || null;
+  try{
+    const updated = await api(`/api/crm/leads/${leadId}/tasks`, {method:'POST', body: JSON.stringify({title, due_at, assigned_to})});
+    const idx = DATA.leads.findIndex(l=>l.id===leadId);
+    if(idx>=0) DATA.leads[idx] = updated;
+    showToast('Task added');
+    render();
+  }catch(e){ showToast('Could not add task: ' + e.message, true); }
+}
+
+async function toggleTask(leadId, taskId, done){
+  try{
+    const updated = await api(`/api/crm/leads/${leadId}/tasks/${taskId}`, {method:'PATCH', body: JSON.stringify({status: done?'done':'open'})});
+    const idx = DATA.leads.findIndex(l=>l.id===leadId);
+    if(idx>=0) DATA.leads[idx] = updated;
+    render();
+  }catch(e){ showToast('Could not update task: ' + e.message, true); }
+}
+
+async function deleteTask(leadId, taskId){
+  try{
+    const updated = await api(`/api/crm/leads/${leadId}/tasks/${taskId}`, {method:'DELETE'});
+    const idx = DATA.leads.findIndex(l=>l.id===leadId);
+    if(idx>=0) DATA.leads[idx] = updated;
+    showToast('Task deleted');
+    render();
+  }catch(e){ showToast('Could not delete task: ' + e.message, true); }
+}
+
+function renderCommentsPanel(lead){
+  const comments = lead.comments || [];
+  return `<div class="panel">
+    <h2>Comments (${comments.length})</h2>
+    ${comments.length===0 ? '<p style="font-size:0.84rem; color:var(--ink-soft);">No comments yet — share updates with the team here.</p>' : comments.map(cm=>`
+      <div class="comment-item">
+        <div class="comment-avatar">${esc((cm.user_name||'?').split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase())}</div>
+        <div class="comment-body">
+          <div class="who">${esc(cm.user_name||'—')} <span>${fmtDate(cm.at)}</span></div>
+          <div class="txt">${esc(cm.text)}</div>
+        </div>
+      </div>`).join('')}
+    <div class="comment-add">
+      <textarea id="commentInput" placeholder="Add a comment for the team…" data-testid="comment-input"></textarea>
+      <button class="btn btn-sun" style="padding:10px 16px; font-size:0.82rem;" onclick="addComment('${lead.id}')" data-testid="comment-add">Post</button>
+    </div>
+  </div>`;
+}
+
+async function addComment(leadId){
+  const text = (document.getElementById('commentInput').value||'').trim();
+  if(!text){ showToast('Comment cannot be empty.', true); return; }
+  try{
+    const updated = await api(`/api/crm/leads/${leadId}/comments`, {method:'POST', body: JSON.stringify({text})});
+    const idx = DATA.leads.findIndex(l=>l.id===leadId);
+    if(idx>=0) DATA.leads[idx] = updated;
+    showToast('Comment posted');
+    render();
+  }catch(e){ showToast('Could not post comment: ' + e.message, true); }
+}
+
+function renderActivityPanel(lead){
+  const acts = (lead.activity||[]).slice().reverse();
+  return `<div class="panel">
+    <h2>Activity Log (${acts.length})</h2>
+    ${acts.length===0 ? '<p style="font-size:0.84rem; color:var(--ink-soft);">No activity recorded yet.</p>' : `
+    <div class="act-panel">${acts.map(a=>`
+      <div class="act-item">
+        <div class="dot"></div>
+        <div style="flex:1;">
+          <span class="who">${esc(a.user_name||'—')}</span> <span class="when">(${esc(a.role||'')})</span>
+          <div>${esc(a.detail||a.action||'')}</div>
+          <div class="when">${fmtDate(a.at)}</div>
+        </div>
+      </div>`).join('')}
+    </div>`}
+  </div>`;
+}
+
+function renderStage(lead, s, i){
+  const open = STATE.openStages[i];
+  const statusClass = s.status==='Completed'?'completed':(s.status==='In Progress'?'inprogress':'');
+  const canEdit = STATE.role==='Admin' || STATE.role===s.owner;
+  return `
+  <div class="stage ${statusClass} ${open?'open':''}">
+    <div class="stage-head" onclick="toggleStage(${i})">
+      <div class="stage-num">${s.status==='Completed'?'✓':(i+1)}</div>
+      <div class="stage-title">
+        <div class="l">${s.label}</div>
+        <div class="s">${s.updatedAt ? fmtDate(s.updatedAt) : 'Not started'}</div>
+      </div>
+      <div class="stage-tags">
+        <span class="tag-actor">${s.actor}</span>
+        <span class="chip-role ${roleClass(s.owner)}">${s.owner}</span>
+      </div>
+    </div>
+    <div class="stage-body">
+      ${!canEdit ? `<div class="locked-note">🔒 Owned by <b>${s.owner}</b> team. Switch to that role (or Admin) to update this step.</div>` : ''}
+      <label>Status</label>
+      <select ${canEdit?'':'disabled'} onchange="updateStageStatus('${lead.id}',${i},this.value)">
+        ${['Pending','In Progress','Completed'].map(v=>`<option value="${v}" ${s.status===v?'selected':''}>${v}</option>`).join('')}
+      </select>
+      <label>Notes</label>
+      <textarea ${canEdit?'':'disabled'} placeholder="Add a note for this step…" onchange="updateStageNotes('${lead.id}',${i},this.value)">${esc(s.notes||'')}</textarea>
+      <label>Documents</label>
+      <div class="doc-list">
+        ${(s.documents||[]).length===0 ? '<div style="font-size:0.78rem;color:var(--ink-soft);">No documents uploaded yet.</div>' : s.documents.map((d,di)=>`
+          <div class="doc-item"><span>📄 <a href="#" onclick="downloadDoc('${lead.id}','${s.key}','${d.id}'); return false;" style="color:var(--blue); text-decoration:none;">${esc(d.name)}</a> <span class="mono" style="color:var(--ink-soft); font-size:0.7rem;">— ${fmtDate(d.at)} by ${esc(d.uploaded_by||'')}</span></span>${canEdit?`<span class="x" onclick="removeDoc('${lead.id}','${s.key}','${d.id}')">✕</span>`:''}</div>
+        `).join('')}
+      </div>
+      ${canEdit ? `<input type="file" onchange="addDoc('${lead.id}','${s.key}',this)">
+      <div style="font-size:0.7rem; color:var(--ink-soft); margin-top:6px;">Max 10 MB. PDF, images, Word, Excel supported.</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function toggleStage(i){ STATE.openStages[i] = !STATE.openStages[i]; render(); }
+
+async function patchStages(lead){
+  try{
+    const updated = await api(`/api/crm/leads/${lead.id}`, {method:'PATCH', body: JSON.stringify({stages: lead.stages})});
+    // Update local copy so re-render matches server
+    const idx = DATA.leads.findIndex(l=>l.id===lead.id);
+    if(idx >= 0) DATA.leads[idx] = updated;
+  }catch(e){ showToast('Save failed: ' + e.message, true); }
+}
+async function updateStageStatus(leadId, i, val){
+  const lead = findLead(leadId);
+  lead.stages[i].status = val;
+  lead.stages[i].updatedAt = new Date().toISOString();
+  if(val==='Completed' && lead.stages[i+1] && lead.stages[i+1].status==='Pending'){
+    lead.stages[i+1].status='In Progress';
+    lead.stages[i+1].updatedAt = new Date().toISOString();
+  }
+  await patchStages(lead); showToast('Stage updated'); render();
+}
+async function updateStageNotes(leadId, i, val){
+  const lead = findLead(leadId);
+  lead.stages[i].notes = val;
+  await patchStages(lead);
+}
+async function addDoc(leadId, stageKey, input){
+  const file = input.files[0];
+  if(!file) return;
+  try{
+    const fd = new FormData();
+    fd.append('file', file);
+    const meta = await api(`/api/crm/leads/${leadId}/stages/${stageKey}/documents`, {method:'POST', body: fd});
+    const lead = findLead(leadId);
+    const stage = (lead.stages||[]).find(x=>x.key===stageKey);
+    if(stage){
+      stage.documents = stage.documents || [];
+      stage.documents.push(meta);
+      await patchStages(lead);
+    }
+    showToast('Uploaded: ' + file.name);
+    render();
+  }catch(e){
+    showToast('Upload failed: ' + e.message, true);
+    render();
+  }
+}
+async function removeDoc(leadId, stageKey, docId){
+  try{
+    await api(`/api/crm/leads/${leadId}/stages/${stageKey}/documents/${docId}`, {method:'DELETE'});
+    const lead = findLead(leadId);
+    const stage = (lead.stages||[]).find(x=>x.key===stageKey);
+    if(stage){
+      stage.documents = (stage.documents||[]).filter(d=>d.id!==docId);
+      await patchStages(lead);
+    }
+    showToast('Document removed');
+    render();
+  }catch(e){ showToast('Could not remove document: ' + e.message, true); }
+}
+async function downloadDoc(leadId, stageKey, docId){
+  try{
+    const lead = findLead(leadId);
+    const stage = (lead.stages||[]).find(x=>x.key===stageKey);
+    const meta = (stage && stage.documents || []).find(d=>d.id===docId);
+    const name = (meta && meta.name) || 'document';
+    const url = API_BASE + `/api/crm/leads/${leadId}/stages/${stageKey}/documents/${docId}`;
+    const res = await fetch(url, {headers: STATE.token ? {'Authorization':'Bearer '+STATE.token} : {}});
+    if(!res.ok) throw new Error('Download failed (HTTP ' + res.status + ')');
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
+  }catch(e){ showToast(e.message, true); }
+}
+
+/* ---- Site survey panel ---- */
+const SURVEY_ROLES = ['Admin','Sales','Site Survey'];
+const SOLAR_ROLES = ['Admin','Sales','Site Survey','Installation'];
+const INV_ROLES = ['Admin','Installation'];
+
+function renderSurveyPanel(lead){
+  const sv = lead.site_survey || {};
+  const canEdit = SURVEY_ROLES.includes(STATE.role);
+  return `<div class="panel">
+    <h2>Site Survey</h2>
+    ${!canEdit ? '<div class="locked-note">🔒 Only Sales / Site Survey / Admin can manage the site survey.</div>' : ''}
+    <div class="solar-grid">
+      <div><label>Scheduled At</label><input id="svScheduled" type="datetime-local" value="${sv.scheduled_at?sv.scheduled_at.slice(0,16):''}" ${canEdit?'':'disabled'}></div>
+      <div><label>Engineer Name</label><input id="svEngineer" value="${esc(sv.engineer_name||'')}" ${canEdit?'':'disabled'}></div>
+      <div><label>Engineer Phone</label><input id="svPhone" value="${esc(sv.engineer_phone||'')}" ${canEdit?'':'disabled'}></div>
+      <div><label>Status</label>
+        <select id="svStatus" ${canEdit?'':'disabled'}>
+          <option value="">— none —</option>
+          ${['scheduled','in_progress','completed','deferred','cancelled'].map(v=>`<option value="${v}" ${sv.status===v?'selected':''}>${v}</option>`).join('')}
+        </select>
+      </div>
+      <div style="grid-column:1/-1;"><label>Site Address</label><input id="svAddress" value="${esc(sv.address||'')}" ${canEdit?'':'disabled'}></div>
+      <div><label>Roof Structure</label><input id="svRoof" value="${esc(sv.roof_structure||'')}" ${canEdit?'':'disabled'}></div>
+      <div><label>Accessible Area (sq. ft.)</label><input id="svArea" type="number" value="${sv.accessible_area_sqft!=null?sv.accessible_area_sqft:''}" ${canEdit?'':'disabled'}></div>
+      <div style="grid-column:1/-1;"><label>Shadow Analysis</label><textarea id="svShadow" style="width:100%; padding:9px 11px; border-radius:8px; border:1.5px solid var(--line); font-size:0.85rem; resize:vertical; min-height:44px;" ${canEdit?'':'disabled'}>${esc(sv.shadow_analysis||'')}</textarea></div>
+      <div style="grid-column:1/-1;"><label>Recommendations</label><textarea id="svRecs" style="width:100%; padding:9px 11px; border-radius:8px; border:1.5px solid var(--line); font-size:0.85rem; resize:vertical; min-height:44px;" ${canEdit?'':'disabled'}>${esc(sv.recommendations||'')}</textarea></div>
+    </div>
+    ${canEdit ? `<div class="row-actions"><button class="btn btn-sun" onclick="saveSurvey('${lead.id}')" data-testid="save-survey">Save Survey</button></div>` : ''}
+  </div>`;
+}
+
+async function saveSurvey(leadId){
+  const get = id => document.getElementById(id)?.value || null;
+  const payload = {
+    scheduled_at: get('svScheduled') ? new Date(get('svScheduled')).toISOString() : null,
+    engineer_name: get('svEngineer') || null,
+    engineer_phone: get('svPhone') || null,
+    status: get('svStatus') || null,
+    address: get('svAddress') || null,
+    roof_structure: get('svRoof') || null,
+    accessible_area_sqft: get('svArea') ? Number(get('svArea')) : null,
+    shadow_analysis: get('svShadow') || null,
+    recommendations: get('svRecs') || null
+  };
+  try{
+    const updated = await api(`/api/crm/leads/${leadId}/survey`, {method:'POST', body: JSON.stringify(payload)});
+    const idx = DATA.leads.findIndex(l=>l.id===leadId);
+    if(idx>=0) DATA.leads[idx] = updated;
+    showToast('Site survey saved');
+    render();
+  }catch(e){ showToast('Could not save survey: ' + e.message, true); }
+}
+
+/* ---- Solar technical design panel ---- */
+function renderSolarPanel(lead){
+  const sol = lead.solar || {};
+  const canEdit = SOLAR_ROLES.includes(STATE.role);
+  return `<div class="panel">
+    <h2>Solar Design &amp; DISCOM</h2>
+    ${!canEdit ? '<div class="locked-note">🔒 Only engineering roles (Sales / Site Survey / Installation / Admin) can edit the technical design.</div>' : ''}
+    <div class="solar-grid">
+      <div><label>Sanctioned Load (kW)</label><input id="slLoad" type="number" step="0.1" value="${sol.sanctioned_load_kw!=null?sol.sanctioned_load_kw:''}" ${canEdit?'':'disabled'}></div>
+      <div><label>Proposed System Size (kW)</label><input id="slSize" type="number" step="0.1" value="${sol.proposed_size_kw!=null?sol.proposed_size_kw:''}" ${canEdit?'':'disabled'}></div>
+      <div><label>Monthly Bill (₹)</label><input id="slBill" type="number" value="${sol.monthly_bill!=null?sol.monthly_bill:(lead.monthly_bill!=null?lead.monthly_bill:'')}" ${canEdit?'':'disabled'}></div>
+      <div><label>Usable Area (sq. ft.)</label><input id="slArea" type="number" value="${sol.usable_area_sqft!=null?sol.usable_area_sqft:''}" ${canEdit?'':'disabled'}></div>
+      <div><label>Roof Type</label><input id="slRoof" value="${esc(sol.roof_type||'')}" placeholder="RCC / Tin / Tile / Other" ${canEdit?'':'disabled'}></div>
+      <div><label>Structure Type</label><input id="slStruct" value="${esc(sol.structure_type||'')}" ${canEdit?'':'disabled'}></div>
+      <div><label>DISCOM Consumer No.</label><input id="slConsumer" value="${esc(sol.discom_consumer_no||'')}" ${canEdit?'':'disabled'}></div>
+      <div><label>DISCOM Application ID</label><input id="slAppId" value="${esc(sol.discom_app_id||'')}" ${canEdit?'':'disabled'}></div>
+      <div><label>Meter Serial</label><input id="slMeter" value="${esc(sol.meter_serial||'')}" ${canEdit?'':'disabled'}></div>
+      <div><label>Inverter Serial</label><input id="slInverter" value="${esc(sol.inverter_serial||'')}" ${canEdit?'':'disabled'}></div>
+      <div><label>Subsidy Status</label>
+        <select id="slSubStatus" ${canEdit?'':'disabled'}>
+          <option value="">— none —</option>
+          ${SOLAR_SUBSIDY_STATUSES.map(v=>`<option value="${v}" ${sol.subsidy_status===v?'selected':''}>${v}</option>`).join('')}
+        </select>
+      </div>
+      <div><label>Subsidy Amount (₹)</label><input id="slSubAmt" type="number" value="${sol.subsidy_amount!=null?sol.subsidy_amount:''}" ${canEdit?'':'disabled'}></div>
+      <div style="grid-column:1/-1;"><label>Panel Serials (comma-separated)</label><input id="slPanels" value="${esc((sol.panel_serials||[]).join(', '))}" ${canEdit?'':'disabled'}></div>
+      <div style="grid-column:1/-1;"><label>BOS Notes</label><textarea id="slBos" style="width:100%; padding:9px 11px; border-radius:8px; border:1.5px solid var(--line); font-size:0.85rem; resize:vertical; min-height:44px;" ${canEdit?'':'disabled'}>${esc(sol.bos_notes||'')}</textarea></div>
+    </div>
+    ${canEdit ? `<div class="row-actions"><button class="btn btn-sun" onclick="saveSolar('${lead.id}')" data-testid="save-solar">Save Design</button></div>` : ''}
+  </div>`;
+}
+
+async function saveSolar(leadId){
+  const get = id => document.getElementById(id)?.value ?? null;
+  const panels = (get('slPanels')||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const payload = {
+    sanctioned_load_kw: get('slLoad') ? Number(get('slLoad')) : null,
+    proposed_size_kw: get('slSize') ? Number(get('slSize')) : null,
+    monthly_bill: get('slBill') ? Number(get('slBill')) : null,
+    usable_area_sqft: get('slArea') ? Number(get('slArea')) : null,
+    roof_type: get('slRoof') || null,
+    structure_type: get('slStruct') || null,
+    discom_consumer_no: get('slConsumer') || null,
+    discom_app_id: get('slAppId') || null,
+    meter_serial: get('slMeter') || null,
+    inverter_serial: get('slInverter') || null,
+    subsidy_status: get('slSubStatus') || null,
+    subsidy_amount: get('slSubAmt') ? Number(get('slSubAmt')) : null,
+    panel_serials: panels,
+    bos_notes: get('slBos') || null
+  };
+  try{
+    const updated = await api(`/api/crm/leads/${leadId}/solar`, {method:'POST', body: JSON.stringify(payload)});
+    const idx = DATA.leads.findIndex(l=>l.id===leadId);
+    if(idx>=0) DATA.leads[idx] = updated;
+    showToast('Solar design saved');
+    render();
+  }catch(e){ showToast('Could not save design: ' + e.message, true); }
+}
+
+/* ---- Tracking portal panel ---- */
+function renderTrackingPanel(lead){
+  const link = lead.tracking_token ? `${API_BASE}/track/${lead.tracking_token}` : null;
+  return `<div class="panel">
+    <h2>Customer Tracking Portal</h2>
+    <p style="font-size:0.84rem; color:var(--ink-soft);">Share this link with the customer — they can follow the installation live, view the quote and download documents. No login needed.</p>
+    ${link ? `<div class="tracking-link"><code data-testid="tracking-link">${esc(link)}</code><button onclick="copyTrackingLink('${esc(link)}')">Copy</button></div>`
+           : '<p style="font-size:0.8rem; color:var(--danger);">No tracking token yet — refresh leads.</p>'}
+    <div class="row-actions">
+      <button class="btn btn-ghost" style="font-size:0.78rem; padding:7px 12px;" onclick="openTrackingPreview('${lead.id}')">Preview</button>
+      ${STATE.role==='Admin' ? `<button class="btn btn-ghost" style="font-size:0.78rem; padding:7px 12px;" onclick="sendTestWhatsApp('${lead.id}')">Send Test WhatsApp</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function copyTrackingLink(link){
+  navigator.clipboard.writeText(link).then(()=>showToast('Tracking link copied')).catch(()=>showToast('Could not copy link', true));
+}
+function openTrackingPreview(leadId){
+  const lead = findLead(leadId);
+  if(lead && lead.tracking_token){ window.open(API_BASE + '/track/' + lead.tracking_token, '_blank'); }
+  else showToast('No tracking token yet', true);
+}
+async function sendTestWhatsApp(leadId){
+  // Fire a milestone event that the customer's WhatsApp provider will receive.
+  try{
+    await api(`/api/crm/leads/${leadId}/whatsapp/test`, {method:'POST'});
+    showToast('Test WhatsApp event queued');
+  }catch(e){ showToast(e.message, true); }
+}
+
+/* ---- Inventory panel ---- */
+function renderInventoryPanel(lead){
+  const inv = lead.inventory || [];
+  const canEdit = INV_ROLES.includes(STATE.role);
+  return `<div class="panel">
+    <h2>Material &amp; Inventory (${inv.length})</h2>
+    ${inv.length===0 ? '<p style="font-size:0.84rem; color:var(--ink-soft);">No items tracked yet. Add panels / inverter / structure / BOS serials.</p>' : inv.map(it=>`
+      <div class="inv-row">
+        <span class="itype-chip it-${esc(it.item_type||'other')}">${esc(it.item_type||'other').toUpperCase()}</span>
+        <b>${esc(it.name)}</b>
+        ${it.serial?`<span class="mono" style="color:var(--blue-deep); font-size:0.76rem;">SN: ${esc(it.serial)}</span>`:''}
+        <span style="font-size:0.74rem; color:var(--ink-soft);">×${it.quantity}</span>
+        <span class="chip-role Sales">${esc(it.status||'allocated')}</span>
+        ${canEdit?`<span class="x" onclick="removeInv('${lead.id}','${it.id}')">✕</span>`:''}
+      </div>`).join('')}
+    ${canEdit ? `<div class="inv-add">
+      <select id="invType"><option value="panel">Panel</option><option value="inverter">Inverter</option><option value="structure">Structure</option><option value="bos">BOS</option><option value="other">Other</option></select>
+      <input id="invName" placeholder="Item name" data-testid="inv-name">
+      <input id="invSerial" placeholder="Serial no (optional)" data-testid="inv-serial">
+      <input id="invQty" type="number" value="1" min="1" style="width:70px;">
+      <button class="btn btn-sun" style="padding:8px 12px; font-size:0.78rem;" onclick="addInv('${lead.id}')" data-testid="add-inv">+ Add</button>
+    </div>` : ''}
+  </div>`;
+}
+
+async function addInv(leadId){
+  const item_type = document.getElementById('invType').value;
+  const name = (document.getElementById('invName').value||'').trim();
+  const serial = (document.getElementById('invSerial').value||'').trim() || null;
+  const quantity = parseInt(document.getElementById('invQty').value)||1;
+  if(!name){ showToast('Item name is required.', true); return; }
+  try{
+    const created = await api(`/api/crm/leads/${leadId}/inventory`, {method:'POST', body: JSON.stringify({item_type, name, serial, quantity})});
+    const lead = findLead(leadId);
+    lead.inventory = lead.inventory || [];
+    lead.inventory.unshift(created);
+    render();
+    showToast('Inventory item added');
+  }catch(e){ showToast('Could not add item: ' + e.message, true); }
+}
+async function removeInv(leadId, itemId){
+  try{
+    await api(`/api/crm/leads/${leadId}/inventory/${itemId}`, {method:'DELETE'});
+    const lead = findLead(leadId);
+    lead.inventory = (lead.inventory||[]).filter(i=>i.id!==itemId);
+    render();
+    showToast('Item removed');
+  }catch(e){ showToast('Could not remove item: ' + e.message, true); }
+}
+
+/* ---- ROI calculator panel ---- */
+function renderRoiPanel(lead){
+  const bill = (lead.solar && lead.solar.monthly_bill != null) ? lead.solar.monthly_bill : (lead.monthly_bill||0);
+  return `<div class="panel">
+    <h2>ROI Estimator</h2>
+    <div class="solar-grid">
+      <div><label>Monthly Bill (₹)</label><input id="roiBill" type="number" value="${bill}" data-testid="roi-bill"></div>
+      <div><label>System Size (kW, blank = auto)</label><input id="roiSize" type="number" step="0.1" placeholder="auto"></div>
+      <div><label>Capex (₹/kW)</label><input id="roiRate" type="number" value="55000"></div>
+      <div><label>Subsidy %</label><input id="roiSub" type="number" value="30" min="0" max="100"></div>
+    </div>
+    <div class="row-actions">
+      <button class="btn btn-sun" onclick="calcRoi('${lead.id}')" data-testid="calc-roi">Calculate ROI</button>
+    </div>
+    <div id="roiResult"></div>
+  </div>`;
+}
+
+async function calcRoi(leadId){
+  const monthly_bill = parseFloat(document.getElementById('roiBill').value);
+  const size_kw = document.getElementById('roiSize').value ? parseFloat(document.getElementById('roiSize').value) : null;
+  const capex_rate_per_kw = parseFloat(document.getElementById('roiRate').value) || 55000;
+  const subsidy_percent = parseFloat(document.getElementById('roiSub').value) || 0;
+  if(!monthly_bill || monthly_bill<=0){ showToast('Enter a monthly bill.', true); return; }
+  try{
+    const roi = await api('/api/crm/solar/roi', {method:'POST', body: JSON.stringify({monthly_bill, size_kw, capex_rate_per_kw, subsidy_percent})});
+    document.getElementById('roiResult').innerHTML = `
+      <div class="roi-box">
+        <div class="roi-card"><div class="k">System Size</div><div class="v">${roi.size_kw} kW</div></div>
+        <div class="roi-card"><div class="k">Capex</div><div class="v">${fmtINR(roi.capex)}</div></div>
+        <div class="roi-card"><div class="k">Subsidy</div><div class="v">${fmtINR(roi.subsidy)}</div></div>
+        <div class="roi-card"><div class="k">Net Investment</div><div class="v">${fmtINR(roi.net_investment)}</div></div>
+        <div class="roi-card"><div class="k">Generation / yr</div><div class="v">${Math.round(roi.annual_generation_kwh).toLocaleString('en-IN')} kWh</div></div>
+        <div class="roi-card"><div class="k">Savings Yr 1</div><div class="v">${fmtINR(roi.annual_savings_year1)}</div></div>
+        <div class="roi-card"><div class="k">Payback</div><div class="v">${roi.payback_years} yrs</div></div>
+        <div class="roi-card"><div class="k">LCOE</div><div class="v">${fmtINR(roi.lcoe_per_kwh)}/kWh</div></div>
+      </div>`;
+  }catch(e){ showToast('ROI calculation failed: ' + e.message, true); }
+}
+
+/* ---- Quotation panel ---- */
+async function patchQuotation(lead){
+  try{
+    const updated = await api(`/api/crm/leads/${lead.id}`, {method:'PATCH', body: JSON.stringify({quotation: lead.quotation})});
+    const idx = DATA.leads.findIndex(l=>l.id===lead.id);
+    if(idx >= 0) DATA.leads[idx] = updated;
+  }catch(e){ showToast('Save failed: ' + e.message, true); }
+}
+
+function renderQuotationPanel(lead){
+  const canQuote = ['Admin','Sales','Accounts'].includes(STATE.role);
+  if(!lead.quotation){
+    return `<div class="panel">
+      <h2>Quotation</h2>
+      <p style="font-size:0.86rem; color:var(--ink-soft); margin-bottom:12px;">No quotation created yet. Generate one based on the customer's monthly bill.</p>
+      ${canQuote ? `<button class="btn btn-sun" onclick="createQuotation('${lead.id}')" data-testid="create-quotation">+ Create Quotation</button>` : '<div class="locked-note">Only Sales / Accounts / Admin can create quotations.</div>'}
+    </div>`;
+  }
+  const q = lead.quotation;
+  const subtotal = q.items.reduce((a,it)=>a+it.qty*it.rate,0);
+  const gst = subtotal * q.gstPercent/100;
+  const grand = subtotal + gst;
+  const qStatus = q.status || 'Draft';
+  return `<div class="panel">
+    <h2>Quotation <span class="q-status ${qStatus}">${qStatus}</span> <span class="q-rev">rev ${q.revision||1}</span></h2>
+    <table class="qi-table">
+      <thead><tr><th>Description</th><th style="width:60px;">Qty</th><th style="width:110px;">Rate (₹)</th><th style="width:110px;">Amount</th><th style="width:30px;"></th></tr></thead>
+      <tbody>
+        ${q.items.map((it,ii)=>`
+          <tr>
+            <td><input value="${(it.desc||'').replace(/"/g,'&quot;')}" onchange="updateQItem('${lead.id}',${ii},'desc',this.value)"></td>
+            <td><input type="number" value="${it.qty}" onchange="updateQItem('${lead.id}',${ii},'qty',this.value)"></td>
+            <td><input type="number" value="${it.rate}" onchange="updateQItem('${lead.id}',${ii},'rate',this.value)"></td>
+            <td class="mono">${fmtINR(it.qty*it.rate)}</td>
+            <td><span class="x" style="color:var(--danger); cursor:pointer;" onclick="removeQItem('${lead.id}',${ii})">✕</span></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    <button class="btn btn-ghost" style="font-size:0.78rem; padding:7px 12px;" onclick="addQItem('${lead.id}')">+ Add line item</button>
+    <div class="qi-totals">
+      <div class="row"><span>Subtotal</span><span class="mono">${fmtINR(subtotal)}</span></div>
+      <div class="row"><span>GST (<input type="number" value="${q.gstPercent}" style="width:44px; display:inline; border:1px solid var(--line); border-radius:6px;" onchange="updateGst('${lead.id}',this.value)">%)</span><span class="mono">${fmtINR(gst)}</span></div>
+      <div class="row grand"><span>Total</span><span class="mono">${fmtINR(grand)}</span></div>
+    </div>
+    <p style="font-size:0.7rem; color:var(--ink-soft); margin-top:6px;">GST rate shown is indicative — confirm the applicable rate for solar goods/services with your accountant.</p>
+    <div class="row-actions">
+      <button class="btn btn-sun" onclick="downloadQuotationPDF('${lead.id}')" data-testid="download-quote-pdf">⬇ Download Quotation PDF</button>
+    </div>
+    ${canQuote && qStatus!=='Approved' ? `<div class="row-actions" style="border-top:1px solid var(--line); padding-top:12px;">
+      <span style="font-size:0.76rem; color:var(--ink-soft); align-self:center;">Status:</span>
+      <button class="btn btn-ghost" style="font-size:0.78rem; padding:7px 12px;" onclick="setQuotationStatus('${lead.id}','Sent')">Send</button>
+      <button class="btn btn-ghost" style="font-size:0.78rem; padding:7px 12px;" onclick="setQuotationStatus('${lead.id}','Approved')">Approve</button>
+      <button class="btn btn-danger" style="font-size:0.78rem; padding:7px 12px;" onclick="setQuotationStatus('${lead.id}','Rejected')">Reject</button>
+    </div>` : (qStatus==='Approved' ? `<div style="margin-top:10px; font-size:0.76rem; color:var(--green-deep);">✓ Approved by ${esc(q.statusChangedBy||'—')} on ${fmtDate(q.statusChangedAt)}</div>` : '')}
+  </div>`;
+}
+async function createQuotation(leadId){
+  const lead = findLead(leadId);
+  lead.quotation = {...makeQuotationItems(displayLead(lead).monthlyBill), status:'Draft', revision:1, createdAt:new Date().toISOString()};
+  await patchQuotation(lead); render();
+}
+async function setQuotationStatus(leadId, status){
+  try{
+    const updated = await api(`/api/crm/leads/${leadId}/quotation/status`, {method:'POST', body: JSON.stringify({status})});
+    const idx = DATA.leads.findIndex(l=>l.id===leadId);
+    if(idx>=0) DATA.leads[idx] = updated;
+    showToast('Quotation marked ' + status);
+    render();
+  }catch(e){ showToast('Could not update status: ' + e.message, true); }
+}
+async function updateQItem(leadId, i, field, val){
+  const lead = findLead(leadId);
+  lead.quotation.items[i][field] = (field==='desc') ? val : Number(val);
+  await patchQuotation(lead); render();
+}
+async function addQItem(leadId){
+  const lead = findLead(leadId);
+  lead.quotation.items.push({desc:'New item', qty:1, rate:0});
+  await patchQuotation(lead); render();
+}
+async function removeQItem(leadId,i){
+  const lead = findLead(leadId);
+  lead.quotation.items.splice(i,1);
+  await patchQuotation(lead); render();
+}
+async function updateGst(leadId, val){
+  const lead = findLead(leadId);
+  lead.quotation.gstPercent = Number(val);
+  await patchQuotation(lead); render();
+}
+
+/* ---- Invoice panel ---- */
+function renderInvoicePanel(lead){
+  const installStage = (lead.stages||[]).find(s=>s.key==='install') || (lead.stages||[]).find(s=>s.key==='installation_in_progress');
+  const installDone = installStage && installStage.status !== 'Pending';
+  const canInvoice = ['Admin','Accounts','Sales'].includes(STATE.role);
+  const canPay = ['Admin','Accounts'].includes(STATE.role);
+  if(!lead.quotation){
+    return `<div class="panel"><h2>Final Invoice</h2><p style="font-size:0.86rem;color:var(--ink-soft);">Create a quotation first — the invoice is generated from it.</p></div>`;
+  }
+  if(!lead.invoice){
+    const qStatus = (lead.quotation.status||'Draft');
+    return `<div class="panel">
+      <h2>Final Invoice</h2>
+      <p style="font-size:0.86rem; color:var(--ink-soft); margin-bottom:12px;">
+        ${qStatus!=='Approved' ? 'Quotation is not <b>Approved</b> yet — invoice can only be generated after approval (Admin can override).' : (installDone ? 'Installation has started — you can generate the final invoice from the current quotation.' : 'Invoice is usually generated once installation begins, but Accounts/Admin can create it anytime.')}
+      </p>
+      ${canInvoice && (qStatus==='Approved' || STATE.role==='Admin') ? `<button class="btn btn-sun" onclick="createInvoice('${lead.id}')" data-testid="create-invoice">+ Create Invoice from Quotation</button>` : ''}
+    </div>`;
+  }
+  const inv = lead.invoice;
+  const subtotal = inv.items.reduce((a,it)=>a+it.qty*it.rate,0);
+  const gst = subtotal*inv.gstPercent/100;
+  const grand = subtotal+gst;
+  const paid = inv.paidAmount || (inv.payments||[]).reduce((a,p)=>a+p.amount,0);
+  const balance = Math.max(0, grand - paid);
+  const payStatus = inv.paymentStatus || 'Unpaid';
+  return `<div class="panel">
+    <h2>Final Invoice — <span class="mono">${inv.number}</span></h2>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin:8px 0 12px;">
+      <span class="badge ${payStatus==='Paid'?'completed':(payStatus==='Partial'?'inprogress':'pending')}">${payStatus}</span>
+      <span class="q-rev">Paid ${fmtINR(paid)} of ${fmtINR(grand)} · Balance ${fmtINR(balance)}</span>
+    </div>
+    <table class="qi-table">
+      <thead><tr><th>Description</th><th style="width:50px;">Qty</th><th style="width:100px;">Rate</th><th style="width:100px;">Amount</th></tr></thead>
+      <tbody>${inv.items.map(it=>`<tr><td>${it.desc}</td><td>${it.qty}</td><td class="mono">${fmtINR(it.rate)}</td><td class="mono">${fmtINR(it.qty*it.rate)}</td></tr>`).join('')}</tbody>
+    </table>
+    <div class="qi-totals">
+      <div class="row"><span>Subtotal</span><span class="mono">${fmtINR(subtotal)}</span></div>
+      <div class="row"><span>GST (${inv.gstPercent}%)</span><span class="mono">${fmtINR(gst)}</span></div>
+      <div class="row grand"><span>Total</span><span class="mono">${fmtINR(grand)}</span></div>
+    </div>
+    ${canPay ? `<div class="pay-form">
+      <input type="number" id="payAmount" placeholder="Amount (₹)" min="1" data-testid="pay-amount">
+      <select id="payMode"><option value="">Mode…</option><option>Cash</option><option>UPI</option><option>Bank Transfer</option><option>Cheque</option><option>Card</option></select>
+      <input type="text" id="payRef" placeholder="Reference (optional)">
+    </div>
+    <div class="row-actions" style="border-top:1px solid var(--line); padding-top:12px;">
+      <button class="btn btn-sun" style="font-size:0.8rem;" onclick="addPayment('${lead.id}')" data-testid="add-payment">+ Record Payment</button>
+    </div>` : ''}
+    ${(inv.payments||[]).length>0 ? `<div style="margin-top:12px; border-top:1px solid var(--line); padding-top:8px;">
+      <div class="section-label">Payments received</div>
+      ${inv.payments.map((p,pi)=>`
+        <div class="pay-row">
+          <span class="amt">${fmtINR(p.amount)}</span>
+          <span class="chip-role Sales">${esc(p.mode||'')}</span>
+          ${p.receiptNo?`<span class="mono" style="color:var(--ink-soft); font-size:0.72rem;">${esc(p.receiptNo)}</span>`:''}
+          <span style="color:var(--ink-soft); font-size:0.74rem;">${fmtDate(p.at)} by ${esc(p.received_by||'')}</span>
+          ${p.reference?`<span style="color:var(--ink-soft); font-size:0.74rem;">ref ${esc(p.reference)}</span>`:''}
+          ${canPay?`<span class="x" onclick="removePayment('${lead.id}','${p.id}')">✕</span>`:''}
+        </div>`).join('')}
+    </div>` : ''}
+    <div class="row-actions">
+      <button class="btn btn-sun" onclick="downloadInvoicePDF('${lead.id}')" data-testid="download-invoice-pdf">⬇ Download Invoice PDF</button>
+    </div>
+  </div>`;
+}
+async function createInvoice(leadId){
+  try{
+    const updated = await api(`/api/crm/leads/${leadId}/invoice`, {method:'POST'});
+    const idx = DATA.leads.findIndex(l=>l.id===leadId);
+    if(idx>=0) DATA.leads[idx] = updated;
+    showToast('Invoice created: ' + updated.invoice.number);
+    render();
+  }catch(e){ showToast(e.message, true); render(); }
+}
+async function addPayment(leadId){
+  const amount = parseFloat(document.getElementById('payAmount').value);
+  const mode = document.getElementById('payMode').value;
+  const reference = (document.getElementById('payRef').value||'').trim() || null;
+  if(!amount || amount<=0){ showToast('Enter a valid payment amount.', true); return; }
+  if(!mode){ showToast('Select a payment mode.', true); return; }
+  try{
+    const updated = await api(`/api/crm/leads/${leadId}/invoice/payments`, {method:'POST', body: JSON.stringify({amount, mode, reference})});
+    const idx = DATA.leads.findIndex(l=>l.id===leadId);
+    if(idx>=0) DATA.leads[idx] = updated;
+    showToast('Payment recorded');
+    render();
+  }catch(e){ showToast('Could not record payment: ' + e.message, true); }
+}
+async function removePayment(leadId, paymentId){
+  try{
+    const updated = await api(`/api/crm/leads/${leadId}/invoice/payments/${paymentId}`, {method:'DELETE'});
+    const idx = DATA.leads.findIndex(l=>l.id===leadId);
+    if(idx>=0) DATA.leads[idx] = updated;
+    showToast('Payment removed');
+    render();
+  }catch(e){ showToast('Could not remove payment: ' + e.message, true); }
+}
+
+/* ---- PDF ---- */
+function pdfLetterhead(doc, title){
+  doc.setFillColor(27,111,168); doc.rect(0,0,210,26,'F');
+  doc.setFillColor(63,165,53); doc.rect(0,26,210,2,'F');
+  doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(16);
+  doc.text('Step Solar Energy Pvt Ltd', 14, 12);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+  doc.text('Satramganj Bazar, Bhadaura, Uttar Pradesh - 232333', 14, 18);
+  doc.text('GSTIN: 09ABPCS3779K1ZC   |   CIN: U42201UP2025PTC217484', 14, 23);
+  doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.text(title, 196, 15, {align:'right'});
+  doc.setTextColor(20,30,25);
+}
+function pdfCustomerBlock(doc, lead, y){
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.text('Bill To', 14, y);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+  doc.text(lead.name, 14, y+6);
+  doc.text(`${lead.city}, ${lead.state} - ${lead.pincode}`, 14, y+11);
+  doc.text(`Phone: ${lead.contact}   Email: ${lead.email}`, 14, y+16);
+  doc.text(`Property: ${lead.propertyType}   |   Roof: ${lead.roofType}`, 14, y+21);
+  return y+29;
+}
+function downloadQuotationPDF(leadId){
+  const raw = findLead(leadId); const lead = displayLead(raw);
+  if(!raw.quotation){ showToast('Create a quotation first', true); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  pdfLetterhead(doc, 'QUOTATION');
+  doc.setFontSize(9); doc.setTextColor(75,90,84);
+  doc.text(`Quotation No: QTN-${lead.code}`, 196, 34, {align:'right'});
+  doc.text(`Date: ${new Date(raw.quotation.createdAt).toLocaleDateString('en-IN')}`, 196, 39, {align:'right'});
+  doc.setTextColor(20,30,25);
+  let y = pdfCustomerBlock(doc, lead, 36);
+  const q = raw.quotation;
+  const rows = q.items.map(it=>[it.desc, it.qty, `Rs. ${Math.round(it.rate).toLocaleString('en-IN')}`, `Rs. ${Math.round(it.qty*it.rate).toLocaleString('en-IN')}`]);
+  doc.autoTable({startY:y, head:[['Description','Qty','Rate','Amount']], body:rows,
+    headStyles:{fillColor:[27,111,168]}, styles:{fontSize:9.5}, margin:{left:14,right:14}});
+  let fy = doc.lastAutoTable.finalY + 6;
+  const subtotal = q.items.reduce((a,it)=>a+it.qty*it.rate,0);
+  const gst = subtotal*q.gstPercent/100;
+  const grand = subtotal+gst;
+  doc.setFontSize(10);
+  doc.text(`Subtotal: Rs. ${Math.round(subtotal).toLocaleString('en-IN')}`, 196, fy, {align:'right'});
+  doc.text(`GST (${q.gstPercent}%): Rs. ${Math.round(gst).toLocaleString('en-IN')}`, 196, fy+6, {align:'right'});
+  doc.setFont('helvetica','bold'); doc.setFontSize(12);
+  doc.text(`Total: Rs. ${Math.round(grand).toLocaleString('en-IN')}`, 196, fy+14, {align:'right'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(75,90,84);
+  doc.text('This is a system-estimated quotation. Final pricing may be confirmed after the site survey.', 14, fy+26, {maxWidth:180});
+  doc.save(`Quotation-${lead.code}.pdf`);
+  showToast('Quotation PDF downloaded');
+}
+function downloadInvoicePDF(leadId){
+  const raw = findLead(leadId); const lead = displayLead(raw);
+  if(!raw.invoice){ showToast('Create an invoice first', true); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  pdfLetterhead(doc, 'TAX INVOICE');
+  const inv = raw.invoice;
+  doc.setFontSize(9); doc.setTextColor(75,90,84);
+  doc.text(`Invoice No: ${inv.number}`, 196, 34, {align:'right'});
+  doc.text(`Date: ${new Date(inv.createdAt).toLocaleDateString('en-IN')}`, 196, 39, {align:'right'});
+  doc.text(`Payment Status: ${inv.paymentStatus}`, 196, 44, {align:'right'});
+  doc.setTextColor(20,30,25);
+  let y = pdfCustomerBlock(doc, lead, 36);
+  const rows = inv.items.map(it=>[it.desc, it.qty, `Rs. ${Math.round(it.rate).toLocaleString('en-IN')}`, `Rs. ${Math.round(it.qty*it.rate).toLocaleString('en-IN')}`]);
+  doc.autoTable({startY:y, head:[['Description','Qty','Rate','Amount']], body:rows,
+    headStyles:{fillColor:[44,124,36]}, styles:{fontSize:9.5}, margin:{left:14,right:14}});
+  let fy = doc.lastAutoTable.finalY + 6;
+  const subtotal = inv.items.reduce((a,it)=>a+it.qty*it.rate,0);
+  const gst = subtotal*inv.gstPercent/100;
+  const grand = subtotal+gst;
+  doc.setFontSize(10);
+  doc.text(`Subtotal: Rs. ${Math.round(subtotal).toLocaleString('en-IN')}`, 196, fy, {align:'right'});
+  doc.text(`GST (${inv.gstPercent}%): Rs. ${Math.round(gst).toLocaleString('en-IN')}`, 196, fy+6, {align:'right'});
+  doc.setFont('helvetica','bold'); doc.setFontSize(12);
+  doc.text(`Total: Rs. ${Math.round(grand).toLocaleString('en-IN')}`, 196, fy+14, {align:'right'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(75,90,84);
+  doc.text('Thank you for choosing Step Solar Energy Pvt Ltd. This is a system-generated invoice.', 14, fy+26);
+  doc.save(`Invoice-${lead.code}.pdf`);
+  showToast('Invoice PDF downloaded');
+}
+
+/* ---- New lead modal ---- */
+function openNewLeadModal(){
+  document.getElementById('modalBackdrop').innerHTML = `
+  <div class="modal">
+    <h3>Add New Lead</h3>
+    <form id="newLeadForm" onsubmit="submitNewLead(event)">
+      <label>Full Name *</label>
+      <input name="full_name" required data-testid="new-name">
+      <div class="field-row">
+        <div><label>Contact Number *</label><input name="phone" required pattern="[6-9][0-9]{9}" data-testid="new-phone"></div>
+        <div><label>Email Address *</label><input name="email" type="email" required data-testid="new-email"></div>
+      </div>
+      <div class="field-row">
+        <div><label>State *</label><input name="state" value="Uttar Pradesh" required data-testid="new-state"></div>
+        <div><label>City *</label><input name="city" required data-testid="new-city"></div>
+      </div>
+      <label>Pincode *</label>
+      <input name="pincode" required pattern="[0-9]{6}" data-testid="new-pincode">
+      <label>Property Type *</label>
+      <div class="choice-group">
+        ${['Residential','Commercial / Office','Industrial / Factory','Agricultural / Pump'].map((v,i)=>`
+          <label class="choice"><input type="radio" name="property_type" value="${v}" ${i===0?'checked':''} required><span>${v}</span></label>`).join('')}
+      </div>
+      <label>Monthly Electricity Bill (₹) *</label>
+      <input name="monthly_bill" type="number" required min="0" data-testid="new-bill">
+      <label>Roof Type &amp; Space *</label>
+      <div class="choice-group">
+        ${['Rented Roof / No Roof','Small Space (100-200 sq. ft.)','Medium Space (300-500 sq. ft.)','Large Open Roof (500+ sq. ft.)'].map((v,i)=>`
+          <label class="choice"><input type="radio" name="roof_type" value="${v}" ${i===0?'checked':''} required><span>${v}</span></label>`).join('')}
+      </div>
+      <label>Timeline *</label>
+      <div class="choice-group">
+        ${['Immediately','Within 1-2 months','Sirf jankari aur quotation chahiye'].map((v,i)=>`
+          <label class="choice"><input type="radio" name="timeline" value="${v}" ${i===0?'checked':''} required><span>${v}</span></label>`).join('')}
+      </div>
+      <label>Source</label>
+      <select name="source"><option>Admin</option><option>Phone Call</option><option>Walk-in</option><option>Website</option></select>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-sun" data-testid="submit-new-lead">Add Lead</button>
+      </div>
+    </form>
+  </div>`;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+function closeModal(){ document.getElementById('modalBackdrop').classList.remove('open'); document.getElementById('modalBackdrop').innerHTML=''; }
+async function submitNewLead(e){
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const payload = {
+    full_name: f.get('full_name'), phone: f.get('phone'), email: f.get('email'),
+    state: f.get('state'), city: f.get('city'), pincode: f.get('pincode'),
+    property_type: f.get('property_type'), monthly_bill: Number(f.get('monthly_bill')),
+    roof_type: f.get('roof_type'), timeline: f.get('timeline'), source: f.get('source') || 'Admin'
+  };
+  try{
+    const created = await api('/api/crm/leads', {method:'POST', body: JSON.stringify(payload)});
+    DATA.leads.unshift(created);
+    closeModal();
+    showToast('Lead added: ' + created.code);
+    goView('leads');
+  }catch(e){
+    showToast('Could not add lead: ' + e.message, true);
+  }
+}
+
+/* ======================= FORCE PASSWORD CHANGE ======================= */
+function openForceChangePasswordModal(){
+  document.getElementById('modalBackdrop').innerHTML = `
+    <div class="modal open">
+      <h3>Set a new password</h3>
+      <p style="font-size:0.85rem;color:var(--ink-soft);">You're using a temporary password. Please set your own before continuing.</p>
+      <label>Current (temporary) password</label>
+      <input id="fcpCurrent" type="password" autocomplete="current-password">
+      <label>New password</label>
+      <input id="fcpNew" type="password" autocomplete="new-password" placeholder="At least 8 characters">
+      <div class="err show" id="fcpErr" style="display:none;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-sun" onclick="submitForceChangePassword()">Set password &amp; continue</button>
+      </div>
+    </div>`;
+  document.getElementById('modalBackdrop').classList.add('open');
+  // No close/backdrop-dismiss here on purpose — the change is mandatory before use.
+}
+
+async function submitForceChangePassword(){
+  const current_password = document.getElementById('fcpCurrent').value;
+  const new_password = document.getElementById('fcpNew').value;
+  const errEl = document.getElementById('fcpErr');
+  if(!current_password || !new_password || new_password.length < 8){
+    errEl.textContent = 'Enter your current password and a new password of at least 8 characters.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try{
+    await api('/api/auth/change-password', {method:'POST', body: JSON.stringify({current_password, new_password})});
+    const saved = _loadAuth();
+    if(saved){ saved.must_change_password = false; localStorage.setItem(AUTH_KEY, JSON.stringify(saved)); }
+    closeModal();
+    showToast('Password updated.');
+    await refreshLeads();
+    startPolling();
+  }catch(e){
+    errEl.textContent = e.message || 'Could not change password.';
+    errEl.style.display = 'block';
+  }
+}
+
+/* ======================= OPS (Admin only) ======================= */
+let OPS_DATA = {inventory: [], logs: [], config: null};
+let OPS_LOADED = false;
+
+async function loadOps(force){
+  if(OPS_LOADED && !force) return;
+  try{
+    const [inventory, logs, config] = await Promise.all([
+      api('/api/crm/inventory'),
+      api('/api/crm/whatsapp/logs'),
+      api('/api/crm/whatsapp/config')
+    ]);
+    OPS_DATA.inventory = inventory || [];
+    OPS_DATA.logs = logs || [];
+    OPS_DATA.config = config || null;
+    OPS_LOADED = true;
+  }catch(e){
+    showToast('Could not load ops data: ' + e.message, true);
+  }
+}
+
+function renderOpsView(){
+  if(!OPS_LOADED){
+    loadOps().then(render);
+    return `<div class="panel" style="padding:60px;text-align:center;color:var(--ink-soft);">Loading inventory &amp; WhatsApp logs…</div>`;
+  }
+  const inv = OPS_DATA.inventory;
+  const logs = OPS_DATA.logs;
+  const byType = {'panel':0,'inverter':0,'structure':0,'bos':0,'other':0};
+  inv.forEach(i=>{ if(i.item_type in byType) byType[i.item_type]++; });
+  const failedCount = logs.filter(l=>l.status==='FAILED').length;
+  const successCount = logs.filter(l=>l.status==='SUCCESS').length;
+
+  return `
+  ${renderWhatsAppSettings()}
+  <div class="stat-grid">
+    <div class="stat-card"><div class="k">Tracked Items</div><div class="v blue">${inv.length}</div></div>
+    <div class="stat-card"><div class="k">Panels</div><div class="v sun">${byType.panel}</div></div>
+    <div class="stat-card"><div class="k">WhatsApp OK</div><div class="v green">${successCount}</div></div>
+    <div class="stat-card"><div class="k">WhatsApp Failed</div><div class="v" style="color:var(--danger);">${failedCount}</div></div>
+  </div>
+  <div class="ops-grid">
+    <div class="panel">
+      <div class="kanban-toolbar">
+        <h2>Serialized Inventory (${inv.length})</h2>
+        <button class="btn btn-ghost" style="font-size:0.78rem; padding:7px 12px;" onclick="refreshOps()">↻ Refresh</button>
+      </div>
+      ${inv.length===0 ? '<p style="font-size:0.85rem;color:var(--ink-soft);">No items tracked yet — add them from a lead detail page.</p>' : `
+      <div class="wlog-scroll">
+        ${inv.map(i=>`
+          <div class="inv-row">
+            <span class="itype-chip it-${esc(i.item_type||'other')}">${esc(i.item_type||'other').toUpperCase()}</span>
+            <b>${esc(i.name)}</b>
+            ${i.serial?`<span class="mono" style="color:var(--blue-deep); font-size:0.76rem;">SN: ${esc(i.serial)}</span>`:''}
+            <span style="font-size:0.74rem; color:var(--ink-soft);">×${i.quantity}</span>
+            <span class="chip-role Sales">${esc(i.status||'allocated')}</span>
+            <span class="mono" style="font-size:0.72rem; color:var(--ink-soft);">${esc(i.lead_code||'—')} · ${esc(i.customer_name||'')}</span>
+          </div>`).join('')}
+      </div>`}
+    </div>
+    <div class="panel">
+      <div class="kanban-toolbar">
+        <h2>WhatsApp Delivery Logs (${logs.length})</h2>
+        <button class="btn btn-sun" style="font-size:0.78rem; padding:7px 12px;" onclick="retryWhatsApp()" data-testid="retry-wa">↻ Retry Failed</button>
+      </div>
+      ${logs.length===0 ? '<p style="font-size:0.85rem;color:var(--ink-soft);">No WhatsApp messages yet.</p>' : `
+      <div class="wlog-scroll">
+        ${logs.map(l=>`
+          <div class="wlog-row">
+            <span class="wlog-status ${esc(l.status||'SKIPPED')}">${esc(l.status||'SKIPPED')}</span>
+            <b>${esc(l.event||'—')}</b>
+            <span class="mono" style="font-size:0.74rem; color:var(--ink-soft);">${esc(l.lead_code||'')}</span>
+            <span style="font-size:0.76rem; color:var(--ink-soft);">${esc(l.recipient||'')}</span>
+            <span style="font-size:0.72rem; color:var(--ink-soft);">attempts ${l.attempts||1}/${l.max_attempts||3}</span>
+            <span style="font-size:0.7rem; color:var(--ink-soft); margin-left:auto;">${fmtDate(l.created_at)}</span>
+          </div>`).join('')}
+      </div>`}
+      <p style="font-size:0.72rem; color:var(--ink-soft); margin-top:10px;">Statuses: SUCCESS · FAILED (auto-retried up to max attempts) · PENDING · SKIPPED (integration disabled or no phone).</p>
+    </div>
+  </div>`;
+}
+
+async function refreshOps(){ await loadOps(true); render(); }
+async function retryWhatsApp(){
+  try{
+    const res = await api('/api/crm/whatsapp/logs/retry', {method:'POST'});
+    showToast(`Retried ${res.retried} message(s), ${res.succeeded} delivered`);
+    await loadOps(true);
+    render();
+  }catch(e){ showToast('Retry failed: ' + e.message, true); }
+}
+
+/* ---- WhatsApp provider settings (Admin) --------------------------- */
+function renderWhatsAppSettings(){
+  const cfg = (OPS_DATA.config || {}).effective || {};
+  const enabled = !!(OPS_DATA.config || {}).enabled;
+  const source = (OPS_DATA.config || {}).source || 'env';
+  const keySet = !!cfg.api_key_set;
+  const sel = (v)=>`<option value="${v}" ${cfg.auth_mode===v?'selected':''}>${v}</option>`;
+  return `
+  <div class="panel" style="margin-bottom:18px;">
+    <div class="kanban-toolbar">
+      <h2>WhatsApp Settings</h2>
+      <span class="chip-role ${enabled?'Sales':'other'}" style="font-size:0.72rem;">${enabled?'ENABLED':'DISABLED'}</span>
+      <span class="mono" style="font-size:0.72rem; color:var(--ink-soft);">source: ${esc(source)} · changes apply immediately</span>
+    </div>
+    <div class="wa-settings-grid">
+      <label>API URL<input id="waApiUrl" type="url" placeholder="https://provider.example.com/v1/messages" value="${esc(cfg.api_url||'')}"></label>
+      <label>API Key<input id="waApiKey" type="password" autocomplete="new-password" placeholder="${keySet?'••••••••  (leave blank to keep)':'Provider API key'}" value=""></label>
+      <label>Key Header<input id="waKeyHeader" value="${esc(cfg.key_header||'Authorization')}"></label>
+      <label>Auth Mode<select id="waAuthMode">${sel('bearer')}${sel('apikey')}${sel('none')}</select></label>
+      <label>Sender ID<input id="waSenderId" value="${esc(cfg.sender_id||'')}"></label>
+      <label>Max Attempts<input id="waMaxAttempts" type="number" min="1" max="50" value="${cfg.max_attempts||3}"></label>
+      <label>Timeout (sec)<input id="waTimeout" type="number" min="1" max="300" value="${cfg.timeout_seconds||10}"></label>
+      <label>Tracking Base URL<input id="waBaseUrl" type="url" value="${esc(cfg.base_url||'https://admin.stepsolar.in')}"></label>
+      <label class="wa-wide">Payload Template (JSON, optional)<textarea id="waTemplate" rows="4" spellcheck="false" placeholder='{"type":"{{event}}","to":"{{phone}}","text":"{{message}}"}'>${esc(cfg.payload_template||'')}</textarea></label>
+    </div>
+    <div class="wa-actions">
+      <button class="btn btn-sun" onclick="saveWhatsAppSettings()" data-testid="wa-save">Save Settings</button>
+      <input id="waTestPhone" class="wa-test-phone" type="tel" placeholder="Test phone, e.g. 9876543210">
+      <button class="btn btn-ghost" onclick="testWhatsAppSend()" data-testid="wa-test">Send Test Message</button>
+      <span id="waSettingsMsg" class="mono wa-msg"></span>
+    </div>
+  </div>`;
+}
+
+function waMsg(html){
+  const el = document.getElementById('waSettingsMsg');
+  if(el) el.innerHTML = html;
+}
+
+async function saveWhatsAppSettings(){
+  try{
+    const body = {
+      api_url: document.getElementById('waApiUrl').value.trim(),
+      key_header: document.getElementById('waKeyHeader').value.trim(),
+      auth_mode: document.getElementById('waAuthMode').value,
+      sender_id: document.getElementById('waSenderId').value.trim(),
+      max_attempts: parseInt(document.getElementById('waMaxAttempts').value,10)||3,
+      timeout_seconds: parseInt(document.getElementById('waTimeout').value,10)||10,
+      base_url: document.getElementById('waBaseUrl').value.trim(),
+      payload_template: document.getElementById('waTemplate').value.trim()
+    };
+    const newKey = document.getElementById('waApiKey').value.trim();
+    if(newKey) body.api_key = newKey;
+    const res = await api('/api/crm/whatsapp/config', {method:'PUT', body: JSON.stringify(body)});
+    OPS_DATA.config = res;
+    waMsg(`Saved — WhatsApp ${res.enabled?'<b style="color:var(--green-deep);">enabled</b>':'<b style="color:var(--danger);">disabled</b>'} (source: ${esc(res.source||'db')})`);
+    showToast('WhatsApp settings saved');
+    await loadOps(true);
+    render();
+  }catch(e){ waMsg('<b style="color:var(--danger);">'+esc(e.message)+'</b>'); showToast('Save failed: ' + e.message, true); }
+}
+
+async function testWhatsAppSend(){
+  try{
+    const phone = document.getElementById('waTestPhone').value.trim();
+    if(!phone){ showToast('Enter a test phone number first.', true); return; }
+    waMsg('Sending…');
+    const res = await api('/api/crm/whatsapp/test-send', {method:'POST', body: JSON.stringify({phone, event:'QUOTATION_SENT'})});
+    if(res.ok && res.status==='SUCCESS'){
+      waMsg('Delivered to <b>'+esc(res.recipient)+'</b> <span style="color:var(--ink-soft);">(log '+esc(res.log_id||'')+')</span>');
+    }else{
+      waMsg('Status: <b style="color:var(--danger);">'+esc(res.status||'FAILED')+'</b> — see the WhatsApp delivery logs panel.');
+    }
+    await loadOps(true);
+    render();
+  }catch(e){ waMsg('<b style="color:var(--danger);">'+esc(e.message)+'</b>'); }
+}
+
+/* ======================= USERS (Admin only) ======================= */
+let USERS_DATA = [];
+let TEAM = [];   // active team directory for assignment/task pickers
+
+async function loadTeam(){
+  try{
+    TEAM = await api('/api/crm/users');
+  }catch(e){
+    TEAM = [];
+  }
+}
+
+async function loadUsers(){
+  try{
+    USERS_DATA = await api('/api/admin/users');
+  }catch(e){
+    showToast('Could not load users: ' + e.message, true);
+    USERS_DATA = [];
+  }
+}
+
+function renderUsersView(){
+  const rows = USERS_DATA.map(u => `
+    <tr data-testid="user-row-${esc(u.id)}">
+      <td>${esc(u.full_name)}</td>
+      <td class="mono">${esc(u.email)}</td>
+      <td><span class="chip-role ${roleClass(u.role)}">${esc(u.role)}</span></td>
+      <td>${u.active ? 'Active' : '<span style="color:var(--rose);">Disabled</span>'}${u.must_change_password ? ' <span style="color:var(--ink-soft);font-size:0.72rem;">(temp password)</span>' : ''}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-ghost" style="padding:5px 10px;font-size:0.78rem;" onclick="openEditUserModal('${u.id}','${esc(u.full_name)}','${esc(u.email)}','${esc(u.role)}')">Edit</button>
+        <button class="btn btn-ghost" style="padding:5px 10px;font-size:0.78rem;" onclick="toggleUserActive('${u.id}', ${u.active})" ${u.id===STATE.userId?'disabled title="Cannot deactivate your own account"':''}>${u.active?'Disable':'Enable'}</button>
+        <button class="btn btn-ghost" style="padding:5px 10px;font-size:0.78rem;" onclick="openResetPasswordModal('${u.id}','${esc(u.email)}')">Reset password</button>
+      </td>
+    </tr>`).join('');
+
+  return `
+  <div class="users-view">
+    <div class="view-head">
+      <h2>Team &amp; Access</h2>
+      <button class="btn btn-sun" onclick="openNewUserModal()" data-testid="new-user-btn">+ Add team member</button>
+    </div>
+    <table class="leads-table">
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--ink-soft);">Loading…</td></tr>'}</tbody>
+    </table>
+  </div>`;
+}
+
+function wireUsersView(){
+  if(USERS_DATA.length === 0){
+    loadUsers().then(render);
+  }
+}
+
+function openNewUserModal(){
+  document.getElementById('modalBackdrop').innerHTML = `
+    <div class="modal open">
+      <h3>Add team member</h3>
+      <label>Full name</label>
+      <input id="nuName" placeholder="e.g. Priya Sharma">
+      <label>Email</label>
+      <input id="nuEmail" type="email" placeholder="name@stepsolar.in">
+      <label>Role</label>
+      <select id="nuRole">
+        ${['Admin', ...ROLES].map(r => `<option value="${r}">${r}</option>`).join('')}
+      </select>
+      <label>Temporary password</label>
+      <input id="nuPassword" type="text" placeholder="At least 8 characters">
+      <p style="font-size:0.72rem;color:var(--ink-soft);margin-top:6px;">They'll be required to change this password on first login.</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-sun" onclick="submitNewUser()">Create user</button>
+      </div>
+    </div>`;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+async function submitNewUser(){
+  const full_name = document.getElementById('nuName').value.trim();
+  const email = document.getElementById('nuEmail').value.trim();
+  const role = document.getElementById('nuRole').value;
+  const temp_password = document.getElementById('nuPassword').value;
+  if(!full_name || !email || !temp_password){
+    showToast('Please fill in every field.', true);
+    return;
+  }
+  try{
+    const created = await api('/api/admin/users', {method:'POST', body: JSON.stringify({full_name, email, role, temp_password})});
+    USERS_DATA.unshift(created);
+    closeModal();
+    showToast('User created: ' + created.email);
+    render();
+  }catch(e){
+    showToast('Could not create user: ' + e.message, true);
+  }
+}
+
+async function toggleUserActive(userId, currentlyActive){
+  try{
+    const updated = await api(`/api/admin/users/${userId}`, {method:'PATCH', body: JSON.stringify({active: !currentlyActive})});
+    USERS_DATA = USERS_DATA.map(u => u.id === updated.id ? updated : u);
+    render();
+  }catch(e){
+    showToast('Could not update user: ' + e.message, true);
+  }
+}
+
+function openEditUserModal(userId, fullName, email, role){
+  document.getElementById('modalBackdrop').innerHTML = `
+    <div class="modal open">
+      <h3>Edit user</h3>
+      <p style="font-size:0.85rem;color:var(--ink-soft);">Update details for <b>${esc(email)}</b>.</p>
+      <label>Full name</label>
+      <input id="euName" value="${esc(fullName)}">
+      <label>Role</label>
+      <select id="euRole">
+        ${['Admin', ...ROLES].map(r => `<option value="${esc(r)}" ${r===role?'selected':''}>${esc(r)}</option>`).join('')}
+      </select>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-sun" onclick="submitEditUser('${userId}')">Save changes</button>
+      </div>
+    </div>`;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+async function submitEditUser(userId){
+  const full_name = document.getElementById('euName').value.trim();
+  const role = document.getElementById('euRole').value;
+  if(!full_name){
+    showToast('Full name cannot be empty.', true);
+    return;
+  }
+  try{
+    const updated = await api(`/api/admin/users/${userId}`, {method:'PATCH', body: JSON.stringify({full_name, role})});
+    USERS_DATA = USERS_DATA.map(u => u.id === updated.id ? updated : u);
+    if(userId === STATE.userId){
+      STATE.fullName = updated.full_name;
+      STATE.role = updated.role;
+      const saved = _loadAuth();
+      if(saved){
+        saved.full_name = updated.full_name;
+        saved.role = updated.role;
+        localStorage.setItem(AUTH_KEY, JSON.stringify(saved));
+      }
+    }
+    closeModal();
+    showToast('User updated.');
+    render();
+  }catch(e){
+    showToast('Could not update user: ' + e.message, true);
+  }
+}
+
+function openResetPasswordModal(userId, email){
+  document.getElementById('modalBackdrop').innerHTML = `
+    <div class="modal open">
+      <h3>Reset password</h3>
+      <p style="font-size:0.85rem;color:var(--ink-soft);">New temporary password for <b>${esc(email)}</b>. They'll be asked to change it on next login.</p>
+      <label>New temporary password</label>
+      <input id="rpPassword" type="text" placeholder="At least 8 characters">
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-sun" onclick="submitResetPassword('${userId}')">Reset</button>
+      </div>
+    </div>`;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+async function submitResetPassword(userId){
+  const reset_password = document.getElementById('rpPassword').value;
+  if(!reset_password || reset_password.length < 8){
+    showToast('Password must be at least 8 characters.', true);
+    return;
+  }
+  try{
+    const updated = await api(`/api/admin/users/${userId}`, {method:'PATCH', body: JSON.stringify({reset_password})});
+    USERS_DATA = USERS_DATA.map(u => u.id === updated.id ? updated : u);
+    closeModal();
+    showToast('Password reset.');
+    render();
+  }catch(e){
+    showToast('Could not reset password: ' + e.message, true);
+  }
+}
+
+/* ======================= INIT ======================= */
+async function boot(){
+  if(STATE.token){
+    try{
+      await api('/api/auth/me');
+      STATE.authed = true;
+      if(_savedAuth && _savedAuth.must_change_password){
+        render();
+        openForceChangePasswordModal();
+        return;
+      }
+      await refreshLeads();
+      startPolling();
+      loadTeam();
+    }catch(e){
+      STATE.authed = false;
+      STATE.token = ''; STATE.role = ''; STATE.email = ''; STATE.fullName = ''; STATE.userId = '';
+      localStorage.removeItem(AUTH_KEY);
+    }
+  }
+  render();
+}
+boot();
+window.addEventListener('beforeunload', stopPolling);
+</script>
+</body>
+</html>
