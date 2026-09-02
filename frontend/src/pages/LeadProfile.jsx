@@ -5,6 +5,19 @@ import { formatDate, formatINR, formatDateTime, timeAgo } from '../lib/format';
 import { Card, Icon, StageBadge, Avatar, Modal, Badge, useToast } from '../components/ui';
 import { PIPELINE_MAP, STAGE_STATUS, invoiceOutstanding } from '../lib/backend';
 import { getToken } from '../lib/api';
+import DocumentPreview from '../components/DocumentPreview';
+import {
+  COMPANY,
+  COMMERCIAL_ITEMS,
+  autoFillPrices,
+  commercialTotals,
+  defaultQuoteItemsForCapacity,
+  documentTotals,
+  invoiceRecord,
+  itemPrice,
+  quotationRecord,
+  receiptRecord,
+} from '../lib/documents';
 
 const TABS = ['Pipeline', 'Overview', 'Quotation', 'Invoice', 'Tasks', 'Comments', 'Activity', 'Documents'];
 const ACT_ICON = { 'lead.created': 'plus', 'stages.updated': 'refresh', 'quotation.updated': 'proposal', 'quotation.status': 'proposal', 'invoice.created': 'billing', 'payment.recorded': 'billing', 'payment.deleted': 'trash', 'task.created': 'check', 'task.updated': 'check', 'task.deleted': 'trash', 'comment.created': 'mail', 'survey.saved': 'survey', 'solar.saved': 'sun', 'document.uploaded': 'file', 'document.deleted': 'trash', 'assigned': 'users', 'lead.updated': 'edit' };
@@ -376,6 +389,7 @@ function SolarModal({ lead, open, onClose, toast }) {
 
 function QuotationTab({ lead, toast }) {
   const [editOpen, setEditOpen] = useState(false);
+  const [preview, setPreview] = useState(false);
 
   async function setStatus(status) {
     try {
@@ -412,19 +426,41 @@ function QuotationTab({ lead, toast }) {
   return (
     <div className="grid-2" style={{ gridTemplateColumns: '1.6fr 1fr' }}>
       <Card title={`Quotation ${q.revision > 1 ? `(rev. ${q.revision})` : ''}`} subtitle={`Status: ${q.status}`} pad={false}
-        action={<button className="btn btn-outline btn-sm" onClick={() => setEditOpen(true)}><Icon name="edit" size={13} /> Edit Items</button>}>
+        action={
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-outline btn-sm" onClick={() => setPreview(true)}><Icon name="file" size={13} /> Preview / Print</button>
+            <button className="btn btn-outline btn-sm" onClick={() => setEditOpen(true)}><Icon name="edit" size={13} /> Edit Items</button>
+          </div>
+        }>
         <div className="table-wrap">
           <table className="data">
-            <thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th style={{ textAlign: 'right' }}>Amount</th></tr></thead>
+            <thead><tr><th>Description</th><th>HSN / Spec</th><th>Qty</th><th>Unit</th><th>Price</th><th>GST %</th><th style={{ textAlign: 'right' }}>Amount</th></tr></thead>
             <tbody>
-              {(q.items || []).map((it, i) => (
-                <tr key={i}>
-                  <td>{it.desc}</td><td>{it.qty}</td><td>{formatINR(it.rate)}</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{formatINR(it.qty * it.rate)}</td>
-                </tr>
-              ))}
-              <tr><td colSpan={3} style={{ textAlign: 'right', color: 'var(--slate-500)' }}>Subtotal</td><td style={{ textAlign: 'right', fontWeight: 700 }}>{formatINR(q.subtotal)}</td></tr>
-              <tr><td colSpan={3} style={{ textAlign: 'right', color: 'var(--slate-500)' }}>GST @ {q.gstPercent || 0}%</td><td style={{ textAlign: 'right', fontWeight: 700 }}>{formatINR(q.gstAmount)}</td></tr>
-              <tr><td colSpan={3} style={{ textAlign: 'right', fontWeight: 700 }}>Grand Total</td><td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--green-700)', fontSize: 15 }}>{formatINR(q.grandTotal)}</td></tr>
+              {(q.items || []).map((it, i) => {
+                const price = itemPrice(it);
+                const amt = (Number(it.qty) || 0) * price;
+                return (
+                  <tr key={i}>
+                    <td>{it.desc}</td>
+                    <td>{it.hsn || '—'}</td>
+                    <td>{it.qty}</td>
+                    <td>{it.unit || 'Nos'}</td>
+                    <td>{formatINR(price)}</td>
+                    <td>{it.gst != null ? it.gst : (q.gstPercent || 0)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatINR(it.total || it.amount || amt)}</td>
+                  </tr>
+                );
+              })}
+              <tr><td colSpan={6} style={{ textAlign: 'right', color: 'var(--slate-500)' }}>Taxable / Subtotal</td><td style={{ textAlign: 'right', fontWeight: 700 }}>{formatINR(q.subtotal)}</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'right', color: 'var(--slate-500)' }}>Total GST</td><td style={{ textAlign: 'right', fontWeight: 700 }}>{formatINR(q.gstAmount)}</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'right', fontWeight: 700 }}>Grand Total</td><td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--green-700)', fontSize: 15 }}>{formatINR(q.grandTotal)}</td></tr>
+              {(Number(q.subsidyCentral) > 0 || Number(q.subsidyState) > 0) && (
+                <>
+                  <tr><td colSpan={6} style={{ textAlign: 'right', color: 'var(--green-700)' }}>Less: Central Subsidy</td><td style={{ textAlign: 'right' }}>{formatINR(q.subsidyCentral)}</td></tr>
+                  <tr><td colSpan={6} style={{ textAlign: 'right', color: 'var(--green-700)' }}>Less: State Subsidy</td><td style={{ textAlign: 'right' }}>{formatINR(q.subsidyState)}</td></tr>
+                  <tr><td colSpan={6} style={{ textAlign: 'right', fontWeight: 700 }}>Net Payable</td><td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--green-700)' }}>{formatINR(q.netPayable)}</td></tr>
+                </>
+              )}
             </tbody>
           </table>
         </div>
@@ -465,45 +501,124 @@ function QuotationTab({ lead, toast }) {
       </div>
 
       <QuoteEditor lead={lead} open={editOpen} onClose={() => setEditOpen(false)} toast={toast} />
+      <DocumentPreview open={preview} onClose={() => setPreview(false)} record={quotationRecord(lead)} title={`Quotation — ${lead.name}`} />
     </div>
   );
 }
 
+function blankItem(gst = 5) {
+  return { desc: '', hsn: '', qty: 1, unit: 'Nos', price: 0, gst };
+}
+
 function QuoteEditor({ lead, open, onClose, toast }) {
   const q = lead.quotation;
+  const [kind, setKind] = useState('quotation');
   const [items, setItems] = useState([]);
-  const [gstPercent, setGstPercent] = useState(5);
+  const [custAddress, setCustAddress] = useState('');
+  const [subsidyCentral, setSubsidyCentral] = useState(0);
+  const [subsidyState, setSubsidyState] = useState(0);
+  const [targetGrand, setTargetGrand] = useState('');
+  const [capacity, setCapacity] = useState('');
+  const [technology, setTechnology] = useState('');
+  const [spaceRequired, setSpaceRequired] = useState('');
+  const [application, setApplication] = useState('');
+  const [ratePerWp, setRatePerWp] = useState('');
+  const [commercialGst, setCommercialGst] = useState(8.9);
+  const [validity, setValidity] = useState(15);
+  const [payAdvance, setPayAdvance] = useState(10);
+  const [payDispatch, setPayDispatch] = useState(80);
+  const [payInstall, setPayInstall] = useState(10);
 
   useEffect(() => {
     if (!open) return;
-    setItems((q?.items || []).map((it) => ({ desc: it.desc, qty: Number(it.qty || 1), rate: Number(it.rate || 0) })));
-    setGstPercent(Number(q?.gstPercent ?? 5));
+    const nextKind = q?.kind || 'quotation';
+    setKind(nextKind);
+    const src = (q?.items && q.items.length)
+      ? q.items
+      : (nextKind === 'commercial' ? COMMERCIAL_ITEMS : defaultQuoteItemsForCapacity(lead.capacity));
+    setItems(src.map((it) => ({
+      desc: it.desc || '',
+      hsn: it.hsn || '',
+      qty: Number(it.qty || 1),
+      unit: it.unit || 'Nos',
+      price: itemPrice(it),
+      gst: it.gst != null ? Number(it.gst) : (Number(q?.gstPercent) || 5),
+    })));
+    setCustAddress(q?.custAddress || [lead.address, lead.city, lead.state].filter(Boolean).join(', '));
+    setSubsidyCentral(Number(q?.subsidyCentral || 0));
+    setSubsidyState(Number(q?.subsidyState || 0));
+    setCapacity(q?.capacity ?? lead.capacity ?? '');
+    setTechnology(q?.technology || '');
+    setSpaceRequired(q?.spaceRequired || '');
+    setApplication(q?.application || '');
+    setRatePerWp(q?.rate ?? q?.ratePerWp ?? '');
+    setCommercialGst(Number(q?.gstPct ?? q?.gstPercent ?? 8.9));
+    setValidity(Number(q?.validity || 15));
+    setPayAdvance(Number(q?.payAdvance ?? 10));
+    setPayDispatch(Number(q?.payDispatch ?? 80));
+    setPayInstall(Number(q?.payInstall ?? 10));
+    setTargetGrand('');
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const subtotal = items.reduce((a, it) => a + (it.qty || 0) * (it.rate || 0), 0);
-  const gst = subtotal * (gstPercent || 0) / 100;
-  const grandTotal = Math.round((subtotal + gst) * 100) / 100;
+  const totals = documentTotals(items, { subsidyCentral, subsidyState });
+  const cTotals = commercialTotals({ capacity, rate: ratePerWp, gstPct: commercialGst });
 
   function setItem(i, k, v) {
     setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)));
   }
 
+  function switchKind(next) {
+    setKind(next);
+    if (!q?.items?.length) {
+      setItems((next === 'commercial' ? COMMERCIAL_ITEMS : defaultQuoteItemsForCapacity(lead.capacity)).map((it) => ({ ...it })));
+    }
+  }
+
   async function save() {
     try {
-      await store.saveQuotation(lead.id, {
+      const payload = {
+        kind,
         items: items.filter((it) => it.desc || it.qty),
-        gstPercent,
-        subtotal: Math.round(subtotal * 100) / 100,
-        gstAmount: Math.round(gst * 100) / 100,
-        grandTotal,
+        custAddress,
+        branchAddress: COMPANY.branchAddress,
+        branchPhone: COMPANY.branchPhone,
+        template: 'invoice.html',
         status: q?.status || 'Draft',
-      });
+      };
+      if (kind === 'commercial') {
+        payload.capacity = Number(capacity) || 0;
+        payload.technology = technology;
+        payload.spaceRequired = spaceRequired;
+        payload.application = application;
+        payload.rate = Number(ratePerWp) || 0;
+        payload.gstPct = Number(commercialGst) || 0;
+        payload.gstPercent = Number(commercialGst) || 0;
+        payload.validity = String(validity || 15);
+        payload.payAdvance = Number(payAdvance) || 0;
+        payload.payDispatch = Number(payDispatch) || 0;
+        payload.payInstall = Number(payInstall) || 0;
+        payload.subtotal = cTotals.subtotal;
+        payload.gstAmount = cTotals.gstAmount;
+        payload.grandTotal = cTotals.grandTotal;
+        payload.netPayable = cTotals.grandTotal;
+      } else {
+        payload.gstPercent = 0;
+        payload.subtotal = totals.subtotal;
+        payload.gstAmount = totals.gstAmount;
+        payload.grandTotal = totals.grandTotal;
+        payload.subsidyCentral = Number(subsidyCentral) || 0;
+        payload.subsidyState = Number(subsidyState) || 0;
+        payload.netPayable = totals.netPayable;
+      }
+      await store.saveQuotation(lead.id, payload);
       toast('Quotation saved');
       onClose();
     } catch (e) {
       toast(e.message, 'error');
     }
   }
+
+  const editorPrices = kind !== 'commercial';
 
   return (
     <Modal open={open} onClose={onClose} title={`Quotation Editor — ${lead.name}`} wide footer={
@@ -512,29 +627,79 @@ function QuoteEditor({ lead, open, onClose, toast }) {
         <button className="btn btn-primary" onClick={save}><Icon name="check" size={14} /> Save Quotation</button>
       </>
     }>
+      <div className="form-grid" style={{ marginBottom: 14 }}>
+        <div className="field"><label>Document type</label>
+          <select className="select" value={kind} onChange={(e) => switchKind(e.target.value)}>
+            <option value="quotation">Residential Quotation</option>
+            <option value="commercial">Commercial Quotation</option>
+          </select>
+        </div>
+        <div className="field" style={{ gridColumn: '1 / -1' }}><label>Customer Address / Place of Supply</label>
+          <input className="input" value={custAddress} onChange={(e) => setCustAddress(e.target.value)} />
+        </div>
+      </div>
+
+      {kind === 'commercial' && (
+        <div className="form-grid" style={{ marginBottom: 14 }}>
+          <div className="field"><label>System Capacity (KWp)</label><input className="input" type="number" value={capacity} onChange={(e) => setCapacity(e.target.value)} /></div>
+          <div className="field"><label>Technology</label><input className="input" value={technology} onChange={(e) => setTechnology(e.target.value)} /></div>
+          <div className="field"><label>Space Required</label><input className="input" value={spaceRequired} onChange={(e) => setSpaceRequired(e.target.value)} /></div>
+          <div className="field"><label>Application</label><input className="input" value={application} onChange={(e) => setApplication(e.target.value)} /></div>
+          <div className="field"><label>Rate per Wp (Rs)</label><input className="input" type="number" value={ratePerWp} onChange={(e) => setRatePerWp(e.target.value)} /></div>
+          <div className="field"><label>GST %</label><input className="input" type="number" value={commercialGst} onChange={(e) => setCommercialGst(+e.target.value)} /></div>
+          <div className="field"><label>Validity (days)</label><input className="input" type="number" value={validity} onChange={(e) => setValidity(+e.target.value)} /></div>
+          <div className="field"><label>Advance %</label><input className="input" type="number" value={payAdvance} onChange={(e) => setPayAdvance(+e.target.value)} /></div>
+          <div className="field"><label>Before Dispatch %</label><input className="input" type="number" value={payDispatch} onChange={(e) => setPayDispatch(+e.target.value)} /></div>
+          <div className="field"><label>After Installation %</label><input className="input" type="number" value={payInstall} onChange={(e) => setPayInstall(+e.target.value)} /></div>
+        </div>
+      )}
+
       <div className="table-wrap">
         <table className="data">
-          <thead><tr><th style={{ width: '52%' }}>Description</th><th style={{ width: 90 }}>Qty</th><th style={{ width: 140 }}>Rate (₹)</th><th style={{ textAlign: 'right' }}>Amount</th><th /></tr></thead>
+          <thead>
+            <tr>
+              <th>Item / Description</th>
+              <th>{kind === 'quotation' || kind === 'commercial' ? 'Brand / Spec' : 'HSN/SAC'}</th>
+              <th style={{ width: 70 }}>Qty</th>
+              <th style={{ width: 80 }}>Unit</th>
+              {editorPrices && <th style={{ width: 110 }}>Price/Unit</th>}
+              {editorPrices && <th style={{ width: 80 }}>GST %</th>}
+              <th />
+            </tr>
+          </thead>
           <tbody>
             {items.map((it, i) => (
               <tr key={i}>
-                <td><input className="input" value={it.desc} onChange={(e) => setItem(i, 'desc', e.target.value)} placeholder="e.g. 550W Mono PERC Panel × 10" /></td>
+                <td><input className="input" value={it.desc} onChange={(e) => setItem(i, 'desc', e.target.value)} /></td>
+                <td><input className="input" value={it.hsn} onChange={(e) => setItem(i, 'hsn', e.target.value)} /></td>
                 <td><input className="input" type="number" value={it.qty} onChange={(e) => setItem(i, 'qty', +e.target.value)} /></td>
-                <td><input className="input" type="number" value={it.rate} onChange={(e) => setItem(i, 'rate', +e.target.value)} /></td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatINR(it.qty * it.rate)}</td>
+                <td><input className="input" value={it.unit} onChange={(e) => setItem(i, 'unit', e.target.value)} /></td>
+                {editorPrices && <td><input className="input" type="number" value={it.price} onChange={(e) => setItem(i, 'price', +e.target.value)} /></td>}
+                {editorPrices && <td><input className="input" type="number" value={it.gst} onChange={(e) => setItem(i, 'gst', +e.target.value)} /></td>}
                 <td style={{ textAlign: 'right' }}><button className="icon-btn" onClick={() => setItems((a) => a.filter((_, x) => x !== i))}><Icon name="trash" size={14} /></button></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
       <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button className="btn btn-outline btn-sm" onClick={() => setItems((a) => [...a, { desc: '', qty: 1, rate: 0 }])}><Icon name="plus" size={13} /> Add Line Item</button>
+        <button className="btn btn-outline btn-sm" onClick={() => setItems((a) => [...a, blankItem(kind === 'commercial' ? 0 : 5)])}><Icon name="plus" size={13} /> Add item</button>
+        {kind === 'quotation' && (
+          <>
+            <label className="field" style={{ margin: 0 }}>Central subsidy <input className="input" type="number" style={{ width: 110 }} value={subsidyCentral} onChange={(e) => setSubsidyCentral(+e.target.value)} /></label>
+            <label className="field" style={{ margin: 0 }}>State subsidy <input className="input" type="number" style={{ width: 110 }} value={subsidyState} onChange={(e) => setSubsidyState(+e.target.value)} /></label>
+            <input className="input" type="number" style={{ width: 140 }} placeholder="Target grand total" value={targetGrand} onChange={(e) => setTargetGrand(e.target.value)} />
+            <button className="btn btn-outline btn-sm" onClick={() => {
+              if (!Number(targetGrand)) return;
+              setItems(autoFillPrices(items, Number(targetGrand)));
+            }}>Auto-fill prices</button>
+          </>
+        )}
         <div style={{ flex: 1 }} />
-        <label className="field" style={{ margin: 0 }}>GST % <input className="input" type="number" style={{ width: 80 }} value={gstPercent} onChange={(e) => setGstPercent(+e.target.value)} /></label>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 12, color: 'var(--slate-500)' }}>Grand Total</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--green-700)' }}>{formatINR(grandTotal)}</div>
+          <div style={{ fontSize: 12, color: 'var(--slate-500)' }}>{kind === 'commercial' ? 'Gross Total Payable' : 'Grand Total'}</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--green-700)' }}>{formatINR(kind === 'commercial' ? cTotals.grandTotal : totals.netPayable)}</div>
         </div>
       </div>
     </Modal>
@@ -543,7 +708,9 @@ function QuoteEditor({ lead, open, onClose, toast }) {
 
 function InvoiceTab({ lead, toast }) {
   const [payOpen, setPayOpen] = useState(false);
-  const [pay, setPay] = useState({ amount: '', mode: 'UPI', reference: '', note: '' });
+  const [pay, setPay] = useState({ amount: '', mode: 'Online', reference: '', note: '' });
+  const [preview, setPreview] = useState(false);
+  const [receiptPreview, setReceiptPreview] = useState(null);
 
   const inv = lead.invoice;
   if (!inv) {
@@ -559,7 +726,7 @@ function InvoiceTab({ lead, toast }) {
       await store.recordPayment(lead.id, { amount: Number(pay.amount), mode: pay.mode, reference: pay.reference || null, note: pay.note || null });
       toast(`Payment of ${formatINR(pay.amount)} recorded`);
       setPayOpen(false);
-      setPay({ amount: '', mode: 'UPI', reference: '', note: '' });
+      setPay({ amount: '', mode: 'Online', reference: '', note: '' });
     } catch (e) {
       toast(e.message, 'error');
     }
@@ -576,17 +743,29 @@ function InvoiceTab({ lead, toast }) {
 
   return (
     <div className="grid-2" style={{ gridTemplateColumns: '1.6fr 1fr' }}>
-      <Card title={`Invoice ${inv.number}`} pad={false} subtitle={`Based on quotation rev. ${inv.basedOnQuotationRevision || '—'}`}>
+      <Card title={`Invoice ${inv.number}`} pad={false} subtitle={`Based on quotation rev. ${inv.basedOnQuotationRevision || '—'}`}
+        action={<button className="btn btn-outline btn-sm" onClick={() => setPreview(true)}><Icon name="file" size={13} /> Preview / Print</button>}>
         <div className="table-wrap">
           <table className="data">
-            <thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th style={{ textAlign: 'right' }}>Amount</th></tr></thead>
+            <thead><tr><th>Description</th><th>HSN/SAC</th><th>Qty</th><th>Unit</th><th>Price</th><th>GST %</th><th style={{ textAlign: 'right' }}>Amount</th></tr></thead>
             <tbody>
-              {(inv.items || []).map((it, i) => (
-                <tr key={i}><td>{it.desc}</td><td>{it.qty}</td><td>{formatINR(it.rate)}</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{formatINR(it.qty * it.rate)}</td></tr>
-              ))}
-              <tr><td colSpan={3} style={{ textAlign: 'right', color: 'var(--slate-500)' }}>Subtotal</td><td style={{ textAlign: 'right', fontWeight: 700 }}>{formatINR(inv.subtotal)}</td></tr>
-              <tr><td colSpan={3} style={{ textAlign: 'right', color: 'var(--slate-500)' }}>GST @ {inv.gstPercent}%</td><td style={{ textAlign: 'right', fontWeight: 700 }}>{formatINR(inv.gstAmount)}</td></tr>
-              <tr><td colSpan={3} style={{ textAlign: 'right', fontWeight: 700 }}>Grand Total</td><td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--green-700)', fontSize: 15 }}>{formatINR(inv.grandTotal)}</td></tr>
+              {(inv.items || []).map((it, i) => {
+                const price = itemPrice(it);
+                return (
+                  <tr key={i}>
+                    <td>{it.desc}</td>
+                    <td>{it.hsn || '—'}</td>
+                    <td>{it.qty}</td>
+                    <td>{it.unit || 'Nos'}</td>
+                    <td>{formatINR(price)}</td>
+                    <td>{it.gst != null ? it.gst : inv.gstPercent}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatINR(it.total || it.amount || it.qty * price)}</td>
+                  </tr>
+                );
+              })}
+              <tr><td colSpan={6} style={{ textAlign: 'right', color: 'var(--slate-500)' }}>Taxable / Subtotal</td><td style={{ textAlign: 'right', fontWeight: 700 }}>{formatINR(inv.subtotal)}</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'right', color: 'var(--slate-500)' }}>Total GST</td><td style={{ textAlign: 'right', fontWeight: 700 }}>{formatINR(inv.gstAmount)}</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'right', fontWeight: 700 }}>Grand Total</td><td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--green-700)', fontSize: 15 }}>{formatINR(inv.grandTotal)}</td></tr>
             </tbody>
           </table>
         </div>
@@ -615,6 +794,7 @@ function InvoiceTab({ lead, toast }) {
                   <div className="cell-main">{formatINR(p.amount)} · {p.mode} {p.reference ? `· ${p.reference}` : ''}</div>
                   <div className="cell-sub">{p.receiptNo} · {formatDateTime(p.at)} · {p.received_by}</div>
                 </div>
+                <button className="icon-btn" title="Print receipt" onClick={() => setReceiptPreview(p)}><Icon name="file" size={14} /></button>
                 <button className="icon-btn" title="Remove" onClick={() => removePayment(p.id)}><Icon name="trash" size={14} /></button>
               </div>
             ))
@@ -644,13 +824,15 @@ function InvoiceTab({ lead, toast }) {
           <div className="field"><label>Amount (₹) *</label><input className="input" type="number" value={pay.amount} onChange={(e) => setPay({ ...pay, amount: e.target.value })} /></div>
           <div className="field"><label>Mode</label>
             <select className="select" value={pay.mode} onChange={(e) => setPay({ ...pay, mode: e.target.value })}>
-              <option>UPI</option><option>NEFT</option><option>RTGS</option><option>Cheque</option><option>Cash</option>
+              <option>Online</option><option>UPI</option><option>NEFT</option><option>RTGS</option><option>Bank Transfer</option><option>Cheque</option><option>Cash</option>
             </select>
           </div>
           <div className="field"><label>Reference / UTR</label><input className="input" value={pay.reference} onChange={(e) => setPay({ ...pay, reference: e.target.value })} placeholder="UTR / txn id" /></div>
           <div className="field"><label>Note</label><input className="input" value={pay.note} onChange={(e) => setPay({ ...pay, note: e.target.value })} /></div>
         </div>
       </Modal>
+      <DocumentPreview open={preview} onClose={() => setPreview(false)} record={invoiceRecord(lead)} title={`Invoice ${inv.number}`} />
+      <DocumentPreview open={Boolean(receiptPreview)} onClose={() => setReceiptPreview(null)} record={receiptPreview ? receiptRecord(lead, receiptPreview) : null} title={`Receipt ${receiptPreview?.receiptNo || ''}`} />
     </div>
   );
 }

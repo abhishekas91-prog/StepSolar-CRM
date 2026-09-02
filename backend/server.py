@@ -982,6 +982,7 @@ async def crm_patch_lead(
         elif existing and not existing.get("quotation"):
             update["quotation"]["revision"] = 1
             update["quotation"]["updatedAt"] = datetime.now(timezone.utc).isoformat()
+        update["quotation"] = _finalize_quotation(update["quotation"])
 
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
 
@@ -1303,30 +1304,40 @@ async def crm_create_invoice(
             detail="Quotation must be Approved before generating the invoice (or ask an Admin).",
         )
 
-    items = lead["quotation"].get("items")
+    q = lead["quotation"]
+    items = q.get("items")
     if not isinstance(items, list) or not items:
         raise HTTPException(status_code=400, detail="Quotation has no line items to invoice")
 
-    subtotal = sum(float(it.get("qty", 0)) * float(it.get("rate", 0)) for it in items)
-    gst_percent = float(lead["quotation"].get("gstPercent", 0))
-    gst = subtotal * gst_percent / 100
-    grand_total = round(subtotal + gst, 2)
+    gst_percent = float(q.get("gstPercent") or q.get("gstPct") or 0)
+    totals = _document_totals(items, gst_percent)
+    if q.get("kind") == "commercial":
+        ct = _commercial_totals(q)
+        totals["subtotal"] = ct["subtotal"]
+        totals["gstAmount"] = ct["gstAmount"]
+        totals["grandTotal"] = ct["grandTotal"]
+        gst_percent = ct["gstPercent"]
 
     number = await _next_invoice_no()
     now_iso = datetime.now(timezone.utc).isoformat()
     invoice = {
         "number": number,
         "createdAt": now_iso,
-        "items": [{"desc": it.get("desc", ""), "qty": it.get("qty", 1), "rate": it.get("rate", 0)}
-                  for it in items],
+        "kind": "invoice",
+        "items": totals["items"],
         "gstPercent": gst_percent,
-        "subtotal": round(subtotal, 2),
-        "gstAmount": round(gst, 2),
-        "grandTotal": grand_total,
+        "subtotal": totals["subtotal"],
+        "gstAmount": totals["gstAmount"],
+        "grandTotal": totals["grandTotal"],
+        "custAddress": q.get("custAddress"),
+        "branchAddress": q.get("branchAddress"),
+        "branchPhone": q.get("branchPhone"),
+        "payMode": q.get("payMode") or "Online",
         "paymentStatus": "Unpaid",
         "payments": [],
         "paidAmount": 0.0,
-        "basedOnQuotationRevision": int(lead["quotation"].get("revision", 1)),
+        "basedOnQuotationRevision": int(q.get("revision", 1)),
+        "template": "invoice.html",
     }
 
     result = await leads_collection.find_one_and_update(
@@ -1339,6 +1350,100 @@ async def crm_create_invoice(
         raise HTTPException(status_code=404, detail="Lead not found")
     await _push_activity(lead_id, user, "invoice.created", f"Invoice {number} generated")
     return result
+
+
+def _item_price(it: Dict[str, Any]) -> float:
+    if it.get("price") is not None and it.get("price") != "":
+        try:
+            return float(it.get("price") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    try:
+        return float(it.get("rate") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _item_gst(it: Dict[str, Any], fallback: float = 0.0) -> float:
+    if it.get("gst") is not None and it.get("gst") != "":
+        try:
+            return float(it.get("gst") or 0)
+        except (TypeError, ValueError):
+            return fallback
+    return fallback
+
+
+def _normalize_line_item(it: Dict[str, Any], gst_fallback: float = 0.0) -> Dict[str, Any]:
+    qty = float(it.get("qty") or 0)
+    price = _item_price(it)
+    gst = _item_gst(it, gst_fallback)
+    amount = qty * price
+    gst_amt = amount * gst / 100
+    return {
+        "desc": it.get("desc") or "",
+        "hsn": it.get("hsn") or "",
+        "qty": qty,
+        "unit": it.get("unit") or "Nos",
+        "price": round(price, 2),
+        "rate": round(price, 2),
+        "gst": gst,
+        "amount": round(amount, 2),
+        "gstAmt": round(gst_amt, 2),
+        "total": round(amount + gst_amt, 2),
+    }
+
+
+def _document_totals(items: List[Any], gst_percent: float = 0.0) -> Dict[str, Any]:
+    rows = [_normalize_line_item(it if isinstance(it, dict) else {}, gst_percent) for it in (items or [])]
+    subtotal = round(sum(r["amount"] for r in rows), 2)
+    gst_amount = round(sum(r["gstAmt"] for r in rows), 2)
+    grand = round(subtotal + gst_amount, 2)
+    return {"items": rows, "subtotal": subtotal, "gstAmount": gst_amount, "grandTotal": grand}
+
+
+def _commercial_totals(q: Dict[str, Any]) -> Dict[str, float]:
+    capacity = float(q.get("capacity") or q.get("capacityKwp") or 0)
+    rate = float(q.get("rate") or q.get("ratePerWp") or 0)
+    gst_pct = float(q.get("gstPct") or q.get("gstPercent") or 0)
+    wp = capacity * 1000
+    base = wp * rate
+    gst_amt = base * gst_pct / 100
+    grand = base + gst_amt
+    return {
+        "subtotal": round(base, 2),
+        "gstAmount": round(gst_amt, 2),
+        "grandTotal": round(grand, 2),
+        "gstPercent": gst_pct,
+    }
+
+
+def _finalize_quotation(quotation: Dict[str, Any]) -> Dict[str, Any]:
+    q = dict(quotation or {})
+    kind = q.get("kind") or "quotation"
+    q["kind"] = kind
+    items = q.get("items") if isinstance(q.get("items"), list) else []
+    if kind == "commercial":
+        totals = _commercial_totals(q)
+        q["items"] = [_normalize_line_item(it if isinstance(it, dict) else {}, 0.0) for it in items]
+        q["subtotal"] = totals["subtotal"]
+        q["gstAmount"] = totals["gstAmount"]
+        q["grandTotal"] = totals["grandTotal"]
+        q["gstPercent"] = totals["gstPercent"]
+        q["gstPct"] = totals["gstPercent"]
+        q["netPayable"] = totals["grandTotal"]
+        return q
+    gst_fallback = float(q.get("gstPercent") or 0)
+    totals = _document_totals(items, gst_fallback)
+    q["items"] = totals["items"]
+    q["subtotal"] = totals["subtotal"]
+    q["gstAmount"] = totals["gstAmount"]
+    q["grandTotal"] = totals["grandTotal"]
+    subsidy_c = float(q.get("subsidyCentral") or 0)
+    subsidy_s = float(q.get("subsidyState") or 0)
+    q["subsidyCentral"] = subsidy_c
+    q["subsidyState"] = subsidy_s
+    q["netPayable"] = round(totals["grandTotal"] - subsidy_c - subsidy_s, 2)
+    return q
 
 
 def _invoice_payment_status(invoice: Dict[str, Any]) -> str:
