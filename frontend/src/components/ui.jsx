@@ -72,7 +72,7 @@ export function Icon({ name, size = 18, ...rest }) {
 /* ---------------- Stage badge ---------------- */
 export function StageBadge({ stage, noDot }) {
   const color = { sky: 'badge-sky', violet: 'badge-violet', amber: 'badge-amber', teal: 'badge-teal', green: 'badge-green', slate: 'badge-slate', crimson: 'badge-crimson' }[stage?.color || 'slate'];
-  return <span className={`badge ${color} ${noDot ? 'no-dot' : ''}`}>{stage?.key || stage}</span>;
+  return <span className={`badge ${color} ${noDot ? 'no-dot' : ''}`}>{stage?.label || stage?.key || stage}</span>;
 }
 
 export function Badge({ tone = 'slate', children, noDot }) {
