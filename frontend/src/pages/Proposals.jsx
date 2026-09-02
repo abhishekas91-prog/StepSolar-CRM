@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useStore, store } from '../lib/store';
 import { Card, Icon, Badge, Modal, useToast } from '../components/ui';
 import { formatINR, formatDate } from '../lib/format';
+import DocumentPreview from '../components/DocumentPreview';
+import { COMPANY, defaultQuoteItemsForCapacity, documentTotals, quotationRecord } from '../lib/documents';
 
 const STATUS_TONE = { Draft: 'slate', Sent: 'amber', Approved: 'green', Rejected: 'crimson' };
 
@@ -14,6 +16,7 @@ export default function Proposals() {
   const preselect = params.get('lead');
   const [open, setOpen] = useState(Boolean(preselect));
   const [leadId, setLeadId] = useState(preselect || '');
+  const [preview, setPreview] = useState(null);
 
   const proposals = useMemo(() => state.leads.filter((l) => l.quotation), [state.leads]);
 
@@ -40,24 +43,22 @@ export default function Proposals() {
       return;
     }
     try {
-      const capacity = lead.capacity || Math.round(Math.min(10, Math.max(1, (lead.monthlyBill || 0) / 900)) * 10) / 10 || 1;
-      const panelQty = Math.ceil(capacity * 1000 / 550);
-      const panelCost = panelQty * 550 * 24;
-      const inverterCost = capacity <= 5 ? 52000 : 78000;
-      const bosCost = 18000;
-      const subtotal = panelCost + inverterCost + bosCost;
-      const gst = Math.round(subtotal * 0.05);
-      const grandTotal = subtotal + gst;
+      const items = defaultQuoteItemsForCapacity(lead.capacity);
+      const totals = documentTotals(items);
       await store.saveQuotation(lead.id, {
-        items: [
-          { desc: `${panelQty} × 550W Mono PERC Panels`, qty: panelQty, rate: 24 },
-          { desc: `${capacity} kW ${capacity <= 5 ? 'String' : 'Hybrid'} Inverter`, qty: 1, rate: inverterCost },
-          { desc: 'Mounting Structure, Cables, Combiner & Earthing (BOS)', qty: 1, rate: bosCost },
-        ],
-        gstPercent: 5,
-        subtotal,
-        gstAmount: gst,
-        grandTotal,
+        kind: 'quotation',
+        items,
+        gstPercent: 0,
+        subtotal: totals.subtotal,
+        gstAmount: totals.gstAmount,
+        grandTotal: totals.grandTotal,
+        netPayable: totals.netPayable,
+        subsidyCentral: 0,
+        subsidyState: 0,
+        custAddress: [lead.address, lead.city, lead.state].filter(Boolean).join(', '),
+        branchAddress: COMPANY.branchAddress,
+        branchPhone: COMPANY.branchPhone,
+        template: 'invoice.html',
         status: 'Draft',
       });
       toast('Draft quotation generated — open the lead to send it');
@@ -100,6 +101,7 @@ export default function Proposals() {
                       <td><Badge tone={STATUS_TONE[q.status] || 'slate'}>{q.status}</Badge></td>
                       <td>{q.revision || 1}</td>
                       <td style={{ textAlign: 'right' }}>
+                        <button className="btn btn-sm btn-outline" onClick={(e) => { e.stopPropagation(); setPreview(l); }}><Icon name="file" size={13} /> Print</button>
                         <button className="btn btn-sm btn-outline" onClick={(e) => { e.stopPropagation(); navigate(`/leads/${l.id}`); }}><Icon name="chev" size={13} /> View</button>
                       </td>
                     </tr>
@@ -130,11 +132,12 @@ export default function Proposals() {
             <div style={{ fontSize: 13, color: 'var(--slate-700)' }}>
               {lead.quotation
                 ? 'This lead already has a quotation. Opening the lead lets you edit line items, GST & revision.'
-                : 'A draft will be created from the estimated capacity & BOM defaults. Open the lead afterwards to fine-tune items and send via WhatsApp.'}
+                : 'A draft will be created in Invoice.html quotation format (Tata 590Wp BOM). Open the lead afterwards to set prices, subsidies and send it.'}
             </div>
           </div>
         )}
       </Modal>
+      <DocumentPreview open={Boolean(preview)} onClose={() => setPreview(null)} record={preview ? quotationRecord(preview) : null} title={`Quotation — ${preview?.name || ''}`} />
     </div>
   );
 }
