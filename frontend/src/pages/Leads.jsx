@@ -36,7 +36,10 @@ export default function Leads() {
   const byStage = useMemo(() => {
     const map = {};
     PIPELINE.forEach((s) => (map[s.key] = []));
-    filtered.forEach((l) => map[l.currentStageKey]?.push(l));
+    filtered.forEach((l) => {
+      const key = map[l.currentStageKey] ? l.currentStageKey : PIPELINE[0].key;
+      map[key].push(l);
+    });
     return map;
   }, [filtered]);
 
@@ -74,6 +77,15 @@ export default function Leads() {
   }
 
   if (!state.hydrated) return <div className="empty-state"><strong>Loading leads…</strong></div>;
+
+  if (state.error && state.leads.length === 0) {
+    return (
+      <div className="empty-state">
+        <strong>Could not load leads</strong>
+        <div style={{ marginTop: 6 }}>{state.error}</div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -126,7 +138,17 @@ export default function Leads() {
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
-              <tbody>
+               <tbody>
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={8}>
+                      <div className="empty-state" style={{ padding: 36 }}>
+                        <strong>{state.leads.length === 0 ? 'No leads yet' : 'No matching leads'}</strong>
+                        <div>{state.leads.length === 0 ? 'Create a lead to start the pipeline.' : 'Try clearing search or filters.'}</div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 {filtered.map((l) => {
                   const t = nextTask(l);
                   return (
