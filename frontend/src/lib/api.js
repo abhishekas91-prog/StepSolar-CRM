@@ -12,6 +12,9 @@ export function clearToken() {
   localStorage.removeItem(KEY_TOKEN);
 }
 
+const MAX_RETRIES = 2;
+const RETRY_BASE_MS = 2000;
+
 async function request(path, { method = 'GET', body, formData, raw } = {}) {
   const headers = {};
   const token = getToken();
@@ -26,10 +29,22 @@ async function request(path, { method = 'GET', body, formData, raw } = {}) {
   }
 
   let res;
-  try {
-    res = await fetch(`/api${path}`, { method, headers, body: payload });
-  } catch (e) {
-    throw new Error('Cannot reach the server. Check your connection.');
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      res = await fetch(`/api${path}`, { method, headers, body: payload });
+    } catch (_) {
+      if (attempt < MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, RETRY_BASE_MS * (attempt + 1)));
+        continue;
+      }
+      throw new Error('Cannot reach the server. Check your connection.');
+    }
+    // 503 = Render free-tier cold start — retry with backoff
+    if (res.status === 503 && attempt < MAX_RETRIES) {
+      await new Promise((r) => setTimeout(r, RETRY_BASE_MS * (attempt + 1)));
+      continue;
+    }
+    break;
   }
 
   if (res.status === 401) {

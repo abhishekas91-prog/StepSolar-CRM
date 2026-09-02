@@ -49,7 +49,10 @@ export async function refreshLeads() {
     const leads = raw.map(mapLead).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     setState({ leads, hydrated: true, error: null });
   } catch (e) {
-    setState({ hydrated: true, error: e.message });
+    const msg = /503/.test(e.message)
+      ? 'Server is waking up — please wait a moment and refresh.'
+      : e.message;
+    setState({ hydrated: true, error: msg });
   }
 }
 
@@ -69,6 +72,12 @@ export async function hydrate() {
   setState({ loading: false });
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(refreshLeads, 30000);
+
+  // Render free-tier cold start: if the first load hit a 503, retry once
+  // after 5 s — by then the backend is usually awake.
+  if (state.error === 'Server is waking up — please wait a moment and refresh.') {
+    setTimeout(() => refreshLeads(), 5000);
+  }
 }
 
 export async function login(email, password) {
