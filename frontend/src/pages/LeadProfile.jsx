@@ -34,6 +34,10 @@ export default function LeadProfile() {
   const lead = state.leads.find((l) => l.id === id);
   const raw = lead;
 
+  if (!state.hydrated) {
+    return <div className="empty-state"><strong>Loading lead…</strong></div>;
+  }
+
   if (!raw) {
     return <div className="empty-state"><strong>Lead not found</strong></div>;
   }
