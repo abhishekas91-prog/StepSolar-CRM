@@ -650,14 +650,23 @@ export function wrapPrintHtml(inner) {
 
 export function printRecord(record) {
   const { html } = renderDocHtml(record);
-  const w = window.open('', '_blank', 'noopener,noreferrer');
-  if (!w) return false;
-  w.document.open();
-  w.document.write(wrapPrintHtml(html));
-  w.document.close();
-  w.focus();
-  setTimeout(() => {
-    try { w.print(); } catch (e) { /* ignore */ }
-  }, 250);
+  const fullHtml = wrapPrintHtml(html);
+  const blob = new Blob([fullHtml], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, '_blank');
+  if (!w) {
+    URL.revokeObjectURL(url);
+    return false;
+  }
+  const cleanup = () => URL.revokeObjectURL(url);
+  w.addEventListener('load', () => {
+    w.focus();
+    setTimeout(() => {
+      try { w.print(); } catch (e) { /* ignore */ }
+      setTimeout(cleanup, 2000);
+    }, 250);
+  });
+  // Fallback in case the load event doesn't fire (some browsers)
+  setTimeout(cleanup, 15000);
   return true;
 }
