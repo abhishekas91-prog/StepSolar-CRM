@@ -70,7 +70,7 @@ export default function Shell() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-logo">
-            <Icon name="sun" size={20} />
+            <img src="/step-solar-logo.png" alt="Step Solar" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
           <div>
             <h1>Step Solar</h1>
