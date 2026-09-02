@@ -78,19 +78,18 @@ export function invoiceOutstanding(inv) {
 }
 
 export function mapLead(b) {
-  const stages = Array.isArray(b?.stages) ? b.stages : [];
+  if (!b || typeof b !== 'object') return null;
+  const stages = Array.isArray(b.stages) ? b.stages : [];
   const cur = currentStageInfo(stages);
-  const q = b?.quotation;
-  const inv = b?.invoice;
+  const q = b.quotation;
+  const inv = b.invoice;
   const capacity = estimateCapacity(b);
-  const nextTask = (b?.tasks || [])
-    .filter((t) => t.status !== 'done')
-    .sort((a, c) => new Date(a.due_at || 0) - new Date(c.due_at || 0))[0];
+  const tasks = Array.isArray(b.tasks) ? b.tasks : [];
 
   return {
     id: b.id,
-    code: b.code,
-    name: b.full_name,
+    code: b.code || '',
+    name: b.full_name || b.name || '',
     phone: b.phone,
     whatsapp: b.phone,
     email: b.email,
@@ -105,8 +104,8 @@ export function mapLead(b) {
     notes: b.notes,
     capacity,
     budget: quoteTotal(q) || (b.monthly_bill ? Number(b.monthly_bill) * 900 : null),
-    createdAt: b.created_at,
-    updatedAt: b.updated_at,
+    createdAt: b.created_at || b.createdAt,
+    updatedAt: b.updated_at || b.updatedAt,
     owner: b.assigned_name || b.assigned_to || '-',
     assignedTo: b.assigned_to || null,
     assignedName: b.assigned_name || null,
@@ -125,27 +124,29 @@ export function mapLead(b) {
     invoice: inv,
     survey: b.site_survey,
     solar: b.solar,
-    comments: b.comments || [],
-    tasks: b.tasks || [],
-    activity: b.activity || [],
-    inventory: b.inventory || [],
+    comments: Array.isArray(b.comments) ? b.comments : [],
+    tasks,
+    activity: Array.isArray(b.activity) ? b.activity : [],
+    inventory: Array.isArray(b.inventory) ? b.inventory : [],
   };
 }
 
 export function toLeadCreate(d) {
-  return {
-    full_name: d.name,
+  const payload = {
+    full_name: (d.name || '').trim(),
     phone: d.phone,
-    email: d.email,
-    state: d.state,
-    city: d.city,
-    pincode: d.pincode,
-    property_type: d.propertyType,
+    email: (d.email || '').trim(),
     monthly_bill: Number(d.monthlyBill) || 0,
-    roof_type: d.roofType,
-    timeline: d.timeline,
     source: d.source || 'Admin',
   };
+  if (d.state) payload.state = d.state;
+  if (d.city) payload.city = d.city;
+  if (d.pincode) payload.pincode = d.pincode;
+  if (d.propertyType) payload.property_type = d.propertyType;
+  if (d.roofType) payload.roof_type = d.roofType;
+  if (d.timeline) payload.timeline = d.timeline;
+  if (d.notes) payload.notes = d.notes;
+  return payload;
 }
 
 export function leadsByMonth(leads, months = 6) {

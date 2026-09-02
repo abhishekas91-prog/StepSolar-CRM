@@ -74,6 +74,15 @@ export default function Dashboard() {
     return <div className="empty-state"><strong>Loading your CRM data…</strong></div>;
   }
 
+  if (state.error && state.leads.length === 0) {
+    return (
+      <div className="empty-state">
+        <strong>Could not load leads</strong>
+        <div style={{ marginTop: 6 }}>{state.error}</div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="kpi-grid">

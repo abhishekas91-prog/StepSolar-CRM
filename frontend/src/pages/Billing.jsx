@@ -4,6 +4,8 @@ import { useStore, store } from '../lib/store';
 import { Card, Icon, Badge, Modal, Drawer, useToast } from '../components/ui';
 import { formatINR, formatDate, timeAgo } from '../lib/format';
 import { invoiceOutstanding } from '../lib/backend';
+import DocumentPreview from '../components/DocumentPreview';
+import { invoiceRecord, itemPrice, receiptRecord } from '../lib/documents';
 
 const STATUS_TONE = { Paid: 'green', Partial: 'amber', Due: 'crimson' };
 
@@ -13,6 +15,8 @@ export default function Billing() {
   const navigate = useNavigate();
   const [selLeadId, setSelLeadId] = useState(null);
   const [details, setDetails] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [receiptPreview, setReceiptPreview] = useState(null);
 
   const bills = useMemo(() => state.leads.filter((l) => l.invoice), [state.leads]);
 
@@ -107,6 +111,7 @@ export default function Billing() {
                       <td style={{ color: o > 0 ? 'var(--crimson-600)' : 'var(--slate-400)' }}>{formatINR(o)}</td>
                       <td><Badge tone={STATUS_TONE[st]}>{st}</Badge></td>
                       <td style={{ textAlign: 'right' }}>
+                        <button className="btn btn-sm btn-outline" onClick={(e) => { e.stopPropagation(); setPreview(l); }}><Icon name="file" size={13} /> Print</button>
                         <button className="btn btn-sm btn-outline" onClick={(e) => { e.stopPropagation(); setDetails(l); }}><Icon name="chev" size={13} /> Details</button>
                       </td>
                     </tr>
@@ -129,6 +134,7 @@ export default function Billing() {
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{formatINR(p.amount)} <span style={{ fontWeight: 400, color: 'var(--slate-500)' }}>· {p.reference || '—'}</span></div>
                 <div style={{ fontSize: 11.5, color: 'var(--slate-500)' }}>{lead.name} · {lead.code} · {timeAgo(p.at)}</div>
               </div>
+              <button className="btn btn-sm btn-outline" onClick={() => setReceiptPreview({ lead, p })}>Receipt</button>
               <button className="btn btn-sm btn-outline" onClick={() => navigate(`/leads/${lead.id}`)}>View</button>
             </div>
           ))}
@@ -203,9 +209,9 @@ export default function Billing() {
                 <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: 'var(--slate-400)', marginBottom: 10 }}>Line Items</div>
                 {(inv.items || []).map((it, i) => (
                   <div key={i} style={{ display: 'flex', gap: 8, padding: '5px 0', fontSize: 13 }}>
-                    <span style={{ flex: 1 }}>{it.desc}</span>
-                    <span style={{ color: 'var(--slate-500)' }}>×{it.qty}</span>
-                    <strong>{formatINR(it.amount || it.qty * it.rate)}</strong>
+                    <span style={{ flex: 1 }}>{it.desc}{it.hsn ? ` · ${it.hsn}` : ''}</span>
+                    <span style={{ color: 'var(--slate-500)' }}>×{it.qty} {it.unit || ''}</span>
+                    <strong>{formatINR(it.total || it.amount || it.qty * itemPrice(it))}</strong>
                   </div>
                 ))}
               </div>
@@ -220,8 +226,11 @@ export default function Billing() {
                   </div>
                 ))}
               </div>
+              <button className="btn btn-outline" style={{ width: '100%', marginTop: 16 }} onClick={() => setPreview(details)}>
+                <Icon name="file" size={14} /> Preview / Print Invoice
+              </button>
               {o > 0 && (
-                <button className="btn btn-primary" style={{ width: '100%', marginTop: 16 }} onClick={() => { setDetails(null); navigate(`/leads/${details.id}`); }}>
+                <button className="btn btn-primary" style={{ width: '100%', marginTop: 10 }} onClick={() => { setDetails(null); navigate(`/leads/${details.id}`); }}>
                   <Icon name="plus" size={14} /> Record Payment on Lead
                 </button>
               )}
@@ -229,6 +238,8 @@ export default function Billing() {
           );
         })()}
       </Drawer>
+      <DocumentPreview open={Boolean(preview)} onClose={() => setPreview(null)} record={preview ? invoiceRecord(preview) : null} title={`Invoice ${preview?.invoice?.number || ''}`} />
+      <DocumentPreview open={Boolean(receiptPreview)} onClose={() => setReceiptPreview(null)} record={receiptPreview ? receiptRecord(receiptPreview.lead, receiptPreview.p) : null} title={`Receipt ${receiptPreview?.p?.receiptNo || ''}`} />
     </div>
   );
 }
