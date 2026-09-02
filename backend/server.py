@@ -579,6 +579,21 @@ def _clean(doc: Dict[str, Any]) -> Dict[str, Any]:
     return doc
 
 
+def _json_safe(value: Any) -> Any:
+    """Make Mongo documents JSON-serializable so the CRM list never 500s."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items() if k != "_id"}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, bytes):
+        return None
+    return str(value)
+
+
 # --------------------------------------------------------------------------- #
 # Public: website form
 # --------------------------------------------------------------------------- #
@@ -679,7 +694,7 @@ async def list_leads(
 ):
     cursor = leads_collection.find({}, {"_id": 0}).sort("created_at", -1).limit(limit)
     items = await cursor.to_list(length=limit)
-    return items
+    return [_json_safe(item) for item in items]
 
 
 @api.get("/leads/stats")
@@ -855,12 +870,73 @@ async def crm_list_leads(
     user: CurrentUser = Depends(get_current_user),
 ):
     cursor = leads_collection.find({}, {"_id": 0}).sort("created_at", -1).limit(limit)
-    return await cursor.to_list(length=limit)
+    items = await cursor.to_list(length=limit)
+    return [_json_safe(item) for item in items]
 
 
-class CRMLeadCreate(LeadCreate):
-    """CRM lead intake (admin) — inherits validators from LeadCreate, default source=Admin."""
+class CRMLeadCreate(BaseModel):
+    """CRM lead intake — name/phone/email required; rest can be filled later."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    full_name: str = Field(..., min_length=2, max_length=120)
+    phone: str
+    email: EmailStr
+    state: Optional[str] = Field(default="", max_length=80)
+    city: Optional[str] = Field(default="", max_length=80)
+    pincode: Optional[str] = Field(default="")
+    property_type: Optional[str] = None
+    monthly_bill: int = Field(default=0, ge=0, le=10_000_000)
+    roof_type: Optional[str] = None
+    timeline: Optional[str] = None
     source: Optional[str] = Field(default="Admin", max_length=60)
+    notes: Optional[str] = Field(default="", max_length=4000)
+
+    @field_validator("phone")
+    @classmethod
+    def _v_phone(cls, v: str) -> str:
+        v = re.sub(r"\D", "", v or "")
+        if not PHONE_RE.match(v):
+            raise ValueError("phone must be a valid 10-digit Indian mobile number")
+        return v
+
+    @field_validator("pincode")
+    @classmethod
+    def _v_pin(cls, v: Optional[str]) -> str:
+        v = (v or "").strip()
+        if not v:
+            return ""
+        if not PIN_RE.match(v):
+            raise ValueError("pincode must be exactly 6 digits")
+        return v
+
+    @field_validator("property_type")
+    @classmethod
+    def _v_prop(cls, v: Optional[str]) -> Optional[str]:
+        if not v:
+            return None
+        if v not in PROPERTY_TYPES:
+            raise ValueError(f"property_type must be one of {sorted(PROPERTY_TYPES)}")
+        return v
+
+    @field_validator("roof_type")
+    @classmethod
+    def _v_roof(cls, v: Optional[str]) -> Optional[str]:
+        if not v:
+            return None
+        v = v.replace("\u2013", "-").replace("\u2014", "-")
+        if v not in ROOF_TYPES:
+            raise ValueError(f"roof_type must be one of {sorted(ROOF_TYPES)}")
+        return v
+
+    @field_validator("timeline")
+    @classmethod
+    def _v_timeline(cls, v: Optional[str]) -> Optional[str]:
+        if not v:
+            return None
+        v = v.replace("\u2013", "-").replace("\u2014", "-")
+        if v not in TIMELINES:
+            raise ValueError(f"timeline must be one of {sorted(TIMELINES)}")
+        return v
 
 
 @crm.post("/leads")
@@ -894,6 +970,7 @@ async def crm_create_lead(
         "roof_type": payload.roof_type,
         "timeline": payload.timeline,
         "source": payload.source or "Admin",
+        "notes": payload.notes or "",
         "ip": _client_ip(request),
         "user_agent": request.headers.get("user-agent", "")[:400],
         "created_at": now_iso,
