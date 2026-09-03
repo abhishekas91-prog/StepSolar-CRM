@@ -27,6 +27,13 @@ const NAV = [
       { to: '/service', label: 'Service Desk', icon: 'service' },
     ],
   },
+  {
+    group: 'Documents',
+    items: [
+      { to: '/create-document', label: 'Create Document', icon: 'file' },
+      { to: '/letterhead', label: 'Letterhead', icon: 'edit' },
+    ],
+  },
 ];
 
 const TITLES = {
@@ -38,6 +45,8 @@ const TITLES = {
   '/subsidies': { title: 'Subsidy & DISCOM Desk', sub: 'Regulatory compliance pipeline' },
   '/billing': { title: 'Billing & Receivables', sub: 'Milestone invoices & payment logging' },
   '/service': { title: 'After-Sales & Field Desk', sub: 'Open tasks, dispatch & maintenance' },
+  '/create-document': { title: 'Create Document', sub: 'Manually create Tax Invoice, Quotation, Receipt or Commercial Quotation' },
+  '/letterhead': { title: 'Letterhead', sub: 'Write, save, print & download official letters on A4 letterhead' },
 };
 
 export default function Shell() {
