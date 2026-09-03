@@ -16,8 +16,6 @@ import Projects from './pages/Projects';
 import Subsidies from './pages/Subsidies';
 import Billing from './pages/Billing';
 import ServiceDesk from './pages/ServiceDesk';
-import CreateDocument from './pages/CreateDocument';
-import Letterhead from './pages/Letterhead';
 
 function Boot() {
   useEffect(() => {
@@ -54,8 +52,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             <Route path="/subsidies" element={<Subsidies />} />
             <Route path="/billing" element={<Billing />} />
             <Route path="/service" element={<ServiceDesk />} />
-            <Route path="/create-document" element={<CreateDocument />} />
-            <Route path="/letterhead" element={<Letterhead />} />
           </Route>
         </Routes>
       </ToastProvider>
