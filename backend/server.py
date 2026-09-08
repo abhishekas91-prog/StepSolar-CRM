@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -682,6 +682,51 @@ async def create_lead(payload: LeadCreate, request: Request):
         sheet_synced=update_fields["sheet_synced"],
         email_sent=update_fields["email_sent"],
     )
+
+
+# --------------------------------------------------------------------------- #
+# Service-to-service: WhatsApp bot lead lookup
+#
+# Separate from the JWT-based CurrentUser auth used everywhere else — the
+# WA bot (WaCrmStepSolar_Live) has no human login, just a shared secret
+# in the X-Service-Key header. Set LEAD_LOOKUP_SERVICE_KEY in .env to a
+# random string and give the bot the same value. Leave it unset to keep
+# this endpoint disabled (every call 401s).
+# --------------------------------------------------------------------------- #
+LEAD_LOOKUP_SERVICE_KEY = os.environ.get("LEAD_LOOKUP_SERVICE_KEY", "")
+
+
+def _verify_service_key(x_service_key: Optional[str] = Header(default=None)):
+    if not LEAD_LOOKUP_SERVICE_KEY or x_service_key != LEAD_LOOKUP_SERVICE_KEY:
+        raise HTTPException(status_code=401, detail="invalid service key")
+
+
+@api.get("/leads/lookup")
+async def lookup_lead_by_phone(
+    phone: str = Query(..., min_length=10, max_length=10),
+    _: None = Depends(_verify_service_key),
+):
+    """Most-recent lead for this phone number, any age (unlike the
+    website form's `_is_duplicate`, which only looks back a few
+    minutes). Used by the WA bot to decide: start the lead-capture
+    flow, or reply with the existing lead's status."""
+    clean_phone = re.sub(r"\D", "", phone)
+    lead = await leads_collection.find_one(
+        {"phone": clean_phone},
+        {
+            "_id": 0,
+            "id": 1,
+            "code": 1,
+            "full_name": 1,
+            "stages": 1,
+            "assigned_name": 1,
+            "created_at": 1,
+        },
+        sort=[("created_at", -1)],
+    )
+    if not lead:
+        raise HTTPException(status_code=404, detail="no lead found")
+    return lead
 
 
 # --------------------------------------------------------------------------- #
