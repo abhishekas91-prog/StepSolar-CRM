@@ -19,7 +19,7 @@ import {
   receiptRecord,
 } from '../lib/documents';
 
-const TABS = ['Pipeline', 'Overview', 'Quotation', 'Invoice', 'Tasks', 'Comments', 'Activity', 'Documents'];
+const TABS = ['Pipeline', 'Overview', 'Field Updates', 'Quotation', 'Invoice', 'Tasks', 'Comments', 'Activity', 'Documents'];
 const ACT_ICON = { 'lead.created': 'plus', 'stages.updated': 'refresh', 'quotation.updated': 'proposal', 'quotation.status': 'proposal', 'invoice.created': 'billing', 'payment.recorded': 'billing', 'payment.deleted': 'trash', 'task.created': 'check', 'task.updated': 'check', 'task.deleted': 'trash', 'comment.created': 'mail', 'survey.saved': 'survey', 'solar.saved': 'sun', 'document.uploaded': 'file', 'document.deleted': 'trash', 'assigned': 'users', 'lead.updated': 'edit' };
 
 const STATUS_COLOR = { Pending: 'slate', 'In Progress': 'amber', Completed: 'green' };
@@ -58,6 +58,7 @@ export default function LeadProfile() {
 
       {tab === 'Pipeline' && <PipelineTab lead={raw} toast={toast} />}
       {tab === 'Overview' && <OverviewTab lead={raw} toast={toast} />}
+      {tab === 'Field Updates' && <FieldUpdatesTab lead={raw} />}
       {tab === 'Quotation' && <QuotationTab lead={raw} toast={toast} />}
       {tab === 'Invoice' && <InvoiceTab lead={raw} toast={toast} />}
       {tab === 'Tasks' && <TasksTab lead={raw} toast={toast} />}
@@ -197,6 +198,125 @@ function PipelineTab({ lead, toast }) {
         Signed in as {user?.full_name} ({user?.role}) — non-admin roles can only edit stages owned by their team.
       </div>
     </Card>
+  );
+}
+
+function mapsUrl(loc) {
+  if (!loc || loc.lat == null || loc.lng == null) return null;
+  return `https://www.google.com/maps?q=${loc.lat},${loc.lng}`;
+}
+
+function FieldUpdatesTab({ lead }) {
+  const stages = lead.stages || [];
+  const withField = stages.filter((s) => s.location || s.notes || (s.documents || []).length);
+  const gpsCount = stages.filter((s) => s.location && s.location.lat != null).length;
+  const notesCount = stages.filter((s) => (s.notes || '').trim()).length;
+  const photoCount = stages.reduce((n, s) => n + (s.documents || []).length, 0);
+
+  return (
+    <>
+      <div className="grid-3" style={{ marginBottom: 18 }}>
+        <Card>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--slate-400)' }}>GPS pins</div>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{gpsCount}</div>
+          <div style={{ fontSize: 12, color: 'var(--slate-500)' }}>from field app</div>
+        </Card>
+        <Card>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--slate-400)' }}>Field notes</div>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{notesCount}</div>
+          <div style={{ fontSize: 12, color: 'var(--slate-500)' }}>stages with notes</div>
+        </Card>
+        <Card>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--slate-400)' }}>Proof photos</div>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{photoCount}</div>
+          <div style={{ fontSize: 12, color: 'var(--slate-500)' }}>uploaded from field</div>
+        </Card>
+      </div>
+
+      <Card title="Field Updates by Stage" subtitle="GPS, notes and proof photos captured by Sales / Ops on the field app">
+        {withField.length === 0 ? (
+          <div className="empty-state">
+            <strong>No field updates yet</strong>
+            <div>When a field agent pins GPS, writes notes or uploads a photo, it will show here.</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {stages.map((s) => {
+              const loc = s.location;
+              const docs = s.documents || [];
+              const hasLoc = loc && loc.lat != null && loc.lng != null;
+              const hasNotes = Boolean((s.notes || '').trim());
+              if (!hasLoc && !hasNotes && !docs.length) return null;
+              const url = mapsUrl(loc);
+              const captured = loc?.capturedAt || s.updatedAt;
+              return (
+                <div key={s.key} className="card" style={{ padding: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+                    <Badge tone={STATUS_COLOR[s.status] || 'slate'}>{s.label}</Badge>
+                    <span style={{ fontSize: 12, color: 'var(--slate-500)' }}>{s.owner}</span>
+                    {captured && (
+                      <span style={{ fontSize: 11.5, color: 'var(--slate-400)', marginLeft: 'auto' }}>
+                        {formatDateTime(captured)}
+                      </span>
+                    )}
+                  </div>
+
+                  {hasLoc && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: hasNotes || docs.length ? 12 : 0 }}>
+                      <span className="icon-btn" style={{ borderColor: 'transparent', background: 'var(--sky-50)', color: 'var(--sky-500)' }}>
+                        <Icon name="loc" size={14} />
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>
+                          {Number(loc.lat).toFixed(6)}, {Number(loc.lng).toFixed(6)}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--slate-500)', marginTop: 2 }}>
+                          {loc.accuracy != null ? `Accuracy ±${Math.round(Number(loc.accuracy))} m` : 'GPS pin'}
+                          {loc.capturedAt ? ` · ${formatDateTime(loc.capturedAt)}` : ''}
+                        </div>
+                        {url && (
+                          <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 600, marginTop: 6, display: 'inline-block' }}>
+                            Open in Google Maps
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {hasNotes && (
+                    <div style={{ background: 'var(--slate-50)', border: '1px solid var(--slate-200)', borderRadius: 8, padding: 12, fontSize: 13, whiteSpace: 'pre-wrap', marginBottom: docs.length ? 12 : 0 }}>
+                      {s.notes}
+                    </div>
+                  )}
+
+                  {docs.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--slate-400)', marginBottom: 8 }}>
+                        {docs.length} proof photo{docs.length === 1 ? '' : 's'}
+                      </div>
+                      {docs.map((d) => (
+                        <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderTop: '1px solid var(--slate-100)' }}>
+                          <span className="icon-btn" style={{ borderColor: 'transparent', background: 'var(--sky-50)', color: 'var(--sky-500)' }}>
+                            <Icon name="camera" size={14} />
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>{d.name}</div>
+                            <div style={{ fontSize: 11.5, color: 'var(--slate-400)' }}>
+                              {Math.round((d.size || 0) / 1024)} KB · {formatDateTime(d.at)}
+                              {d.uploaded_by ? ` · ${d.uploaded_by}` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </>
   );
 }
 
