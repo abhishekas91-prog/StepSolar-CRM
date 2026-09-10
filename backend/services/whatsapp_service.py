@@ -65,6 +65,7 @@ WHATSAPP_EVENTS = [
     "NET_METERING_PENDING",
     "COMMISSIONED",
     "SUBSIDY_DISBURSED",
+    "DOCUMENT_SENT",
 ]
 
 # Human-friendly default text for each event (used as the {{message}}
@@ -112,6 +113,10 @@ _EVENT_MESSAGES = {
     "SUBSIDY_DISBURSED": (
         "Hi {name}, the subsidy amount for {code} has been disbursed to "
         "your account. Thank you for choosing Step Solar."
+    ),
+    "DOCUMENT_SENT": (
+        "Hi {name}, your {doc} for {code} is ready. Please check the "
+        "document shared by Step Solar."
     ),
 }
 
@@ -261,6 +266,7 @@ def _event_message(event: str, lead: Dict[str, Any], extra: Dict[str, Any]) -> s
         code=code,
         when=when,
         link=link,
+        doc=extra.get("doc") or extra.get("document_type") or "document",
     )
 
 

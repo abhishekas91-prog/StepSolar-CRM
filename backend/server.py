@@ -1860,6 +1860,12 @@ class WhatsAppTestSend(BaseModel):
     event: Optional[str] = Field(default=None, max_length=60)
 
 
+class WhatsAppDocumentSend(BaseModel):
+    document_type: Optional[str] = Field(default="document", max_length=40)
+    document_no: Optional[str] = Field(default="", max_length=80)
+    message: Optional[str] = Field(default=None, max_length=2000)
+
+
 _SUBSIDY_STATUSES = {"Not Applied", "Applied", "Approved", "Disbursed", "Rejected"}
 
 
@@ -2096,6 +2102,36 @@ async def crm_whatsapp_test(
     survey_extra["link"] = _tracking_url(lead) or ""
     out = await _notify_whatsapp(lead, chosen, survey_extra)
     return {"ok": out.get("ok", False), "status": out.get("status"), "log_id": out.get("log_id")}
+
+
+@crm.post("/leads/{lead_id}/whatsapp/document")
+async def crm_whatsapp_document(
+    lead_id: str,
+    payload: WhatsAppDocumentSend,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Send a quotation/invoice/receipt notice via the WhatsApp Business API."""
+    lead = await _get_lead_or_404(lead_id)
+    doc_type = (payload.document_type or "document").strip() or "document"
+    doc_no = (payload.document_no or "").strip()
+    label = {
+        "quotation": "quotation",
+        "commercial": "commercial quotation",
+        "invoice": "invoice",
+        "receipt": "payment receipt",
+    }.get(doc_type.lower(), doc_type)
+    extra: Dict[str, Any] = {
+        "doc": f"{label} {doc_no}".strip(),
+        "document_type": doc_type,
+        "document_no": doc_no,
+        "link": _tracking_url(lead) or "",
+        "sent_by": user.full_name or user.email,
+    }
+    if payload.message:
+        extra["message"] = payload.message
+    out = await _notify_whatsapp(lead, "DOCUMENT_SENT", extra)
+    await _push_activity(lead_id, user, "whatsapp.document", f"WhatsApp {label} sent")
+    return {"ok": out.get("ok", False), "status": out.get("status"), "log_id": out.get("log_id"), "error": out.get("error")}
 
 
 # --------------------------------------------------------------------------- #
