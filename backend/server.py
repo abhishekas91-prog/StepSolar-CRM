@@ -15,7 +15,7 @@ restricted server-side to the stage's owner role, or Admin):
 - PATCH /api/crm/leads/{id}   partial update (any of: stages, quotation, invoice, contact fields)
 - GET   /api/crm/meta         return {nextLeadCode} for display
 
-Admin user management (Admin role only — /api/admin/*):
+Admin user management (super@stepsolar.in only — /api/admin/*):
 - GET   /api/admin/users              list all login users (no password hashes)
 - POST  /api/admin/users              create user with temp password (forces change on first login)
 - PATCH /api/admin/users/{id}         update full_name / role / active / reset_password
@@ -61,6 +61,7 @@ from services.whatsapp_service import (
     WHATSAPP_EVENTS,
     base_url,
     effective_config,
+    get_runtime_config,
     notify_stage_event,
     retry_failed_messages,
     send_whatsapp,
@@ -172,6 +173,7 @@ _WHATSAPP_STAGE_EVENTS: Dict[str, tuple] = {
 
 
 VALID_ROLES = {"Admin", "Sales", "Site Survey", "Installation", "Accounts"}
+SUPER_ADMIN_EMAIL = os.environ.get("SUPER_ADMIN_EMAIL", "super@stepsolar.in").strip().lower()
 
 
 async def _next_lead_code() -> str:
@@ -375,6 +377,16 @@ async def get_current_user(
 def require_admin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
     if user.role != "Admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
+    return user
+
+
+def _is_super_admin(user: CurrentUser) -> bool:
+    return (user.email or "").strip().lower() == SUPER_ADMIN_EMAIL
+
+
+def require_super_admin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    if not _is_super_admin(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super admin only")
     return user
 
 
@@ -1853,6 +1865,8 @@ class WhatsAppConfigUpdate(BaseModel):
     timeout_seconds: Optional[int] = Field(default=None, ge=1, le=300)
     payload_template: Optional[str] = Field(default=None, max_length=50_000)
     base_url: Optional[str] = Field(default=None, max_length=1000)
+    wacrm_base_url: Optional[str] = Field(default=None, max_length=1000)
+    wacrm_api_key: Optional[str] = Field(default=None, max_length=2000)
 
 
 class WhatsAppTestSend(BaseModel):
@@ -1864,6 +1878,11 @@ class WhatsAppDocumentSend(BaseModel):
     document_type: Optional[str] = Field(default="document", max_length=40)
     document_no: Optional[str] = Field(default="", max_length=80)
     message: Optional[str] = Field(default=None, max_length=2000)
+
+
+class WhatsAppChatSend(BaseModel):
+    phone: str = Field(..., min_length=8, max_length=20)
+    text: str = Field(..., min_length=1, max_length=4000)
 
 
 _SUBSIDY_STATUSES = {"Not Applied", "Applied", "Approved", "Disbursed", "Rejected"}
@@ -2165,11 +2184,37 @@ def _db_config_view(cfg: Dict[str, Any]) -> Dict[str, Any]:
     key = str(view.get("api_key") or "")
     view["api_key_set"] = bool(key)
     view.pop("api_key", None)
+    wacrm_key = str(view.get("wacrm_api_key") or "")
+    view["wacrm_api_key_set"] = bool(wacrm_key)
+    view.pop("wacrm_api_key", None)
     return view
 
 
+def _e164_phone(phone: Any) -> str:
+    digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
+    if not digits:
+        return ""
+    if digits.startswith("91") and len(digits) == 12:
+        return f"+{digits}"
+    if len(digits) == 10:
+        return f"+91{digits}"
+    if str(phone).strip().startswith("+"):
+        return f"+{digits}"
+    return f"+{digits}"
+
+
+def _wacrm_credentials() -> tuple[str, str]:
+    db_cfg = get_runtime_config()
+    base = str(
+        db_cfg.get("wacrm_base_url")
+        or os.environ.get("WACRM_BASE_URL", "https://wa-crm-step-solar-live.vercel.app")
+    ).strip().rstrip("/")
+    key = str(db_cfg.get("wacrm_api_key") or os.environ.get("WACRM_API_KEY", "")).strip()
+    return base, key
+
+
 @crm.get("/whatsapp/config")
-async def crm_whatsapp_config(user: CurrentUser = Depends(require_admin)):
+async def crm_whatsapp_config(user: CurrentUser = Depends(require_super_admin)):
     db_cfg = await _load_whatsapp_settings()
     return {
         "enabled": whatsapp_enabled(),
@@ -2177,13 +2222,14 @@ async def crm_whatsapp_config(user: CurrentUser = Depends(require_admin)):
         "db_config": _db_config_view(db_cfg) if db_cfg else None,
         "effective": effective_config(mask_key=True),
         "events": WHATSAPP_EVENTS,
+        "is_super_admin": True,
     }
 
 
 @crm.put("/whatsapp/config")
 async def crm_whatsapp_config_update(
     payload: WhatsAppConfigUpdate,
-    user: CurrentUser = Depends(require_admin),
+    user: CurrentUser = Depends(require_super_admin),
 ):
     data = payload.model_dump(exclude_unset=True)
 
@@ -2208,14 +2254,14 @@ async def crm_whatsapp_config_update(
 
     db_cfg = (await _load_whatsapp_settings()) or {}
 
-    # api_key: masked placeholder → keep existing; empty string → clear;
-    # otherwise store the new key.
-    if "api_key" in data:
-        new_key = str(data["api_key"] or "").strip()
-        if new_key and "•" in new_key:
-            data.pop("api_key", None)
-        else:
-            data["api_key"] = new_key
+    # api_key / wacrm_api_key: masked placeholder → keep existing; empty → clear.
+    for secret_field in ("api_key", "wacrm_api_key"):
+        if secret_field in data:
+            new_key = str(data[secret_field] or "").strip()
+            if new_key and "•" in new_key:
+                data.pop(secret_field, None)
+            else:
+                data[secret_field] = new_key
 
     merged = {**db_cfg, **{k: v for k, v in data.items() if v is not None}}
     await _save_whatsapp_settings(merged, user)
@@ -2233,7 +2279,7 @@ async def crm_whatsapp_config_update(
 @crm.post("/whatsapp/test-send")
 async def crm_whatsapp_test_send(
     payload: WhatsAppTestSend,
-    user: CurrentUser = Depends(require_admin),
+    user: CurrentUser = Depends(require_super_admin),
 ):
     """Send a test WhatsApp to an arbitrary phone using the current config."""
     if not whatsapp_enabled():
@@ -2266,6 +2312,85 @@ async def crm_whatsapp_test_send(
         "log_id": out.get("log_id"),
         "error": out.get("error"),
     }
+
+
+async def _wacrm_request(method: str, path: str, *, json_body: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    import httpx
+    base, key = _wacrm_credentials()
+    if not base:
+        raise HTTPException(status_code=400, detail="WaCRM base URL is not configured")
+    if not key:
+        raise HTTPException(status_code=400, detail="WaCRM API key is not configured — set it in Master Config")
+    url = f"{base}{path}"
+    headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            res = await client.request(method, url, headers=headers, json=json_body, params=params)
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Cannot reach WaCRM: {e}")
+    try:
+        body = res.json()
+    except Exception:
+        body = {"error": {"message": res.text[:400]}}
+    if res.status_code >= 400:
+        err = body.get("error") if isinstance(body, dict) else None
+        msg = (err or {}).get("message") if isinstance(err, dict) else None
+        raise HTTPException(status_code=res.status_code, detail=msg or f"WaCRM error ({res.status_code})")
+    return body if isinstance(body, dict) else {"data": body}
+
+
+@crm.get("/whatsapp/chat")
+async def crm_whatsapp_chat(
+    phone: str = Query(..., min_length=8, max_length=20),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Load conversation history for a customer phone from WaCrmStepSolar_Live."""
+    e164 = _e164_phone(phone)
+    if not e164:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    contacts = await _wacrm_request("GET", "/api/v1/contacts", params={"search": e164, "limit": 20})
+    rows = contacts.get("data") or []
+    contact = next((c for c in rows if str(c.get("phone") or "").replace(" ", "") in {e164, e164.lstrip("+")}), None)
+    if contact is None and rows:
+        contact = rows[0]
+    if not contact:
+        return {"configured": True, "phone": e164, "contact": None, "conversation_id": None, "messages": []}
+    convs = await _wacrm_request("GET", "/api/v1/conversations", params={"contact_id": contact.get("id"), "limit": 5})
+    conv_rows = convs.get("data") or []
+    conversation = conv_rows[0] if conv_rows else None
+    messages: List[Dict[str, Any]] = []
+    if conversation and conversation.get("id"):
+        msg_res = await _wacrm_request(
+            "GET",
+            f"/api/v1/conversations/{conversation['id']}/messages",
+            params={"limit": 50},
+        )
+        messages = list(reversed(msg_res.get("data") or []))
+    return {
+        "configured": True,
+        "phone": e164,
+        "contact": contact,
+        "conversation_id": (conversation or {}).get("id"),
+        "messages": messages,
+    }
+
+
+@crm.post("/whatsapp/chat")
+async def crm_whatsapp_chat_send(
+    payload: WhatsAppChatSend,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Send a WhatsApp text via WaCrmStepSolar_Live public API."""
+    e164 = _e164_phone(payload.phone)
+    if not e164:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    out = await _wacrm_request(
+        "POST",
+        "/api/v1/messages",
+        json_body={"to": e164, "type": "text", "text": payload.text.strip()},
+    )
+    data = out.get("data") or out
+    return {"ok": True, "phone": e164, "data": data}
 
 
 # --------------------------------------------------------------------------- #
@@ -2370,9 +2495,9 @@ async def public_track_document(token: str, doc_id: str):
 
 
 # --------------------------------------------------------------------------- #
-# Admin — user management (Admin role only)
+# Admin — user management (super admin email only)
 # --------------------------------------------------------------------------- #
-admin_router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+admin_router = APIRouter(prefix="/admin", dependencies=[Depends(require_super_admin)])
 
 
 class AdminUserOut(BaseModel):

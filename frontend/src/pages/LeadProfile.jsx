@@ -6,6 +6,7 @@ import { Card, Icon, StageBadge, Avatar, Modal, Badge, useToast } from '../compo
 import { PIPELINE_MAP, STAGE_STATUS, invoiceOutstanding } from '../lib/backend';
 import { getToken } from '../lib/api';
 import DocumentPreview from '../components/DocumentPreview';
+import WhatsAppChat from '../components/WhatsAppChat';
 import {
   COMPANY,
   COMMERCIAL_ITEMS,
@@ -73,6 +74,7 @@ function Header({ lead, toast }) {
   const state = useStore();
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignee, setAssignee] = useState(lead.assignedTo || '');
+  const [chatOpen, setChatOpen] = useState(false);
 
   async function assign() {
     try {
@@ -117,7 +119,7 @@ function Header({ lead, toast }) {
 
       <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap', borderTop: '1px solid var(--slate-100)', paddingTop: 16 }}>
         <button className="btn btn-outline btn-sm" onClick={() => { window.location.href = `tel:${lead.phone}`; }}><Icon name="phone" size={14} /> Call</button>
-        <button className="btn btn-whatsapp btn-sm" onClick={() => { window.open(`https://wa.me/91${lead.phone}`, '_blank'); }}><Icon name="whatsapp" size={14} /> WhatsApp</button>
+        <button className="btn btn-whatsapp btn-sm" onClick={() => setChatOpen(true)}><Icon name="whatsapp" size={14} /> WhatsApp</button>
         {trackUrl && <a className="btn btn-outline btn-sm" href={trackUrl} target="_blank" rel="noreferrer"><Icon name="link" size={14} /> Tracking Portal</a>}
         <button className="btn btn-outline btn-sm" onClick={() => setAssignOpen(true)}><Icon name="users" size={14} /> Assign</button>
         <div style={{ flex: 1 }} />
@@ -150,6 +152,7 @@ function Header({ lead, toast }) {
           </select>
         </div>
       </Modal>
+      <WhatsAppChat open={chatOpen} onClose={() => setChatOpen(false)} lead={lead} />
     </Card>
   );
 }
@@ -840,6 +843,7 @@ function InvoiceTab({ lead, toast }) {
   if (!inv) {
     return <Card title="Invoice" subtitle="No invoice generated for this lead"><div className="empty-state"><strong>No invoice yet</strong><div>Generate one from an approved quotation.</div></div></Card>;
   }
+  const payments = Array.isArray(inv.payments) ? inv.payments : [];
 
   async function record() {
     if (!pay.amount || Number(pay.amount) <= 0) {
@@ -908,10 +912,10 @@ function InvoiceTab({ lead, toast }) {
         </Card>
 
         <Card title="Payment Ledger" pad={false}>
-          {inv.payments.length === 0 ? (
+          {payments.length === 0 ? (
             <div className="empty-state" style={{ padding: 16 }}><strong>No payments yet</strong></div>
           ) : (
-            inv.payments.map((p) => (
+            payments.map((p) => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', borderBottom: '1px solid var(--slate-100)' }}>
                 <span className="icon-btn" style={{ borderColor: 'transparent', background: 'var(--green-50)', color: 'var(--green-600)' }}><Icon name="check" size={14} /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>

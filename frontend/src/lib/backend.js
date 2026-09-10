@@ -121,7 +121,9 @@ export function mapLead(b) {
     stages: stageList(stages),
     quotation: q,
     quotationHistory: b.quotation_history || [],
-    invoice: inv,
+    invoice: inv
+      ? { ...inv, payments: Array.isArray(inv.payments) ? inv.payments : [] }
+      : inv,
     survey: b.site_survey,
     solar: b.solar,
     comments: Array.isArray(b.comments) ? b.comments : [],

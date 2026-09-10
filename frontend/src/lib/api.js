@@ -107,7 +107,13 @@ export const api = {
   inventory: () => request('/crm/inventory'),
   whatsappLogs: () => request('/crm/whatsapp/logs'),
   whatsappConfig: () => request('/crm/whatsapp/config'),
+  saveWhatsappConfig: (data) => request('/crm/whatsapp/config', { method: 'PUT', body: data }),
+  whatsappTestSend: (data) => request('/crm/whatsapp/test-send', { method: 'POST', body: data }),
+  whatsappChat: (phone) => request(`/crm/whatsapp/chat?phone=${encodeURIComponent(phone)}`),
+  whatsappChatSend: (data) => request('/crm/whatsapp/chat', { method: 'POST', body: data }),
   adminUsers: () => request('/admin/users'),
+  createAdminUser: (data) => request('/admin/users', { method: 'POST', body: data }),
+  patchAdminUser: (id, data) => request(`/admin/users/${id}`, { method: 'PATCH', body: data }),
 
   uploadDoc: (id, stageKey, file) => {
     const fd = new FormData();
