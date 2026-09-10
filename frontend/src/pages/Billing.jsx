@@ -148,7 +148,7 @@ export default function Billing() {
               <button className="btn btn-sm btn-outline" onClick={() => setReceiptPreview({ lead, p })}>Receipt</button>
               <button className="btn btn-sm btn-whatsapp" onClick={async () => {
                 try {
-                  const out = await api.sendWhatsappDocument(lead.id, { document_type: 'receipt', document_no: p.receiptNo });
+                  const out = await api.sendWhatsappDocument(lead.id, { document_type: 'receipt', document_no: p.receiptNo, payment_id: p.id });
                   if (!out.ok) throw new Error(out.error || 'Send failed');
                   toast('Receipt sent via WhatsApp');
                 } catch (err) {
@@ -270,7 +270,7 @@ export default function Billing() {
         })()}
       </Drawer>
       <DocumentPreview open={Boolean(preview)} onClose={() => setPreview(null)} record={preview ? invoiceRecord(preview) : null} title={`Invoice ${preview?.invoice?.number || ''}`} leadId={preview?.id} documentType="invoice" documentNo={preview?.invoice?.number} />
-      <DocumentPreview open={Boolean(receiptPreview)} onClose={() => setReceiptPreview(null)} record={receiptPreview ? receiptRecord(receiptPreview.lead, receiptPreview.p) : null} title={`Receipt ${receiptPreview?.p?.receiptNo || ''}`} leadId={receiptPreview?.lead?.id} documentType="receipt" documentNo={receiptPreview?.p?.receiptNo} />
+      <DocumentPreview open={Boolean(receiptPreview)} onClose={() => setReceiptPreview(null)} record={receiptPreview ? receiptRecord(receiptPreview.lead, receiptPreview.p) : null} title={`Receipt ${receiptPreview?.p?.receiptNo || ''}`} leadId={receiptPreview?.lead?.id} documentType="receipt" documentNo={receiptPreview?.p?.receiptNo} paymentId={receiptPreview?.p?.id} />
     </div>
   );
 }

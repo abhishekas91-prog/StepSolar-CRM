@@ -3,7 +3,7 @@ import { Modal, Icon } from './ui';
 import { DOC_PRINT_CSS, printRecord, renderDocHtml } from '../lib/documents';
 import { api } from '../lib/api';
 
-export default function DocumentPreview({ open, onClose, record, title, leadId, documentType, documentNo }) {
+export default function DocumentPreview({ open, onClose, record, title, leadId, documentType, documentNo, paymentId }) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
@@ -28,6 +28,7 @@ export default function DocumentPreview({ open, onClose, record, title, leadId, 
       const out = await api.sendWhatsappDocument(leadId, {
         document_type: documentType || record.mode || 'document',
         document_no: documentNo || record.docNo || '',
+        payment_id: paymentId || undefined,
       });
       if (!out.ok) throw new Error(out.error || 'Send failed');
       setSent(true);

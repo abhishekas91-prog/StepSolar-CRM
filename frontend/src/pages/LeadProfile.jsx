@@ -930,7 +930,7 @@ function InvoiceTab({ lead, toast }) {
                   <div className="cell-sub">{p.receiptNo} · {formatDateTime(p.at)} · {p.received_by}</div>
                 </div>
                 <button className="icon-btn" title="Print receipt" onClick={() => setReceiptPreview(p)}><Icon name="file" size={14} /></button>
-                <SendWhatsAppFile leadId={lead.id} documentType="receipt" documentNo={p.receiptNo} toast={toast} compact />
+                <SendWhatsAppFile leadId={lead.id} documentType="receipt" documentNo={p.receiptNo} paymentId={p.id} toast={toast} compact />
                 <button className="icon-btn" title="Remove" onClick={() => removePayment(p.id)}><Icon name="trash" size={14} /></button>
               </div>
             ))
@@ -968,7 +968,7 @@ function InvoiceTab({ lead, toast }) {
         </div>
       </Modal>
       <DocumentPreview open={preview} onClose={() => setPreview(false)} record={invoiceRecord(lead)} title={`Invoice ${inv.number}`} leadId={lead.id} documentType="invoice" documentNo={inv.number} />
-      <DocumentPreview open={Boolean(receiptPreview)} onClose={() => setReceiptPreview(null)} record={receiptPreview ? receiptRecord(lead, receiptPreview) : null} title={`Receipt ${receiptPreview?.receiptNo || ''}`} leadId={lead.id} documentType="receipt" documentNo={receiptPreview?.receiptNo} />
+      <DocumentPreview open={Boolean(receiptPreview)} onClose={() => setReceiptPreview(null)} record={receiptPreview ? receiptRecord(lead, receiptPreview) : null} title={`Receipt ${receiptPreview?.receiptNo || ''}`} leadId={lead.id} documentType="receipt" documentNo={receiptPreview?.receiptNo} paymentId={receiptPreview?.id} />
     </div>
   );
 }
@@ -1199,7 +1199,7 @@ function DocumentsTab({ lead, toast }) {
   );
 }
 
-function SendWhatsAppFile({ leadId, docId, documentType = 'document', documentNo = '', toast, compact }) {
+function SendWhatsAppFile({ leadId, docId, documentType = 'document', documentNo = '', paymentId, toast, compact }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -1212,6 +1212,7 @@ function SendWhatsAppFile({ leadId, docId, documentType = 'document', documentNo
         document_type: documentType,
         document_no: documentNo || '',
         doc_id: docId || undefined,
+        payment_id: paymentId || undefined,
       });
       if (!out.ok) throw new Error(out.error || 'Send failed');
       setDone(true);

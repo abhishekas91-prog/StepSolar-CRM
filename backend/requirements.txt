@@ -13,3 +13,4 @@ python-dotenv==1.2.2
 gspread==6.1.4
 google-auth==2.55.2
 httpx==0.28.1
+fpdf2==2.8.4

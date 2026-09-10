@@ -57,6 +57,7 @@ from lead_service import (
     send_lead_email,
     sheets_enabled,
 )
+from services.pdf_docs import generate_document_pdf
 from services.whatsapp_service import (
     WHATSAPP_EVENTS,
     base_url,
@@ -1880,6 +1881,7 @@ class WhatsAppDocumentSend(BaseModel):
     message: Optional[str] = Field(default=None, max_length=2000)
     stage_key: Optional[str] = Field(default=None, max_length=80)
     doc_id: Optional[str] = Field(default=None, max_length=80)
+    payment_id: Optional[str] = Field(default=None, max_length=80)
 
 
 class WhatsAppChatSend(BaseModel):
@@ -2125,6 +2127,48 @@ async def crm_whatsapp_test(
     return {"ok": out.get("ok", False), "status": out.get("status"), "log_id": out.get("log_id")}
 
 
+async def _store_generated_pdf(
+    lead: Dict[str, Any],
+    pdf_bytes: bytes,
+    filename: str,
+    doc_type: str,
+) -> str:
+    """Persist a generated PDF so WaCRM can fetch it via the public tracking URL."""
+    from bson import Binary
+    doc_id = str(uuid.uuid4())
+    at = datetime.now(timezone.utc).isoformat()
+    await documents_collection.insert_one({
+        "id": doc_id,
+        "lead_id": lead["id"],
+        "stage_key": "generated",
+        "name": filename[:255],
+        "content_type": "application/pdf",
+        "size": len(pdf_bytes),
+        "data": Binary(pdf_bytes),
+        "uploaded_by": "system",
+        "kind": "generated_pdf",
+        "document_type": doc_type,
+        "at": at,
+    })
+    return doc_id
+
+
+def _payment_from_lead(lead: Dict[str, Any], payment_id: Optional[str], document_no: str) -> Optional[Dict[str, Any]]:
+    inv = lead.get("invoice") or {}
+    payments = list(inv.get("payments") or [])
+    if payment_id:
+        found = next((p for p in payments if p.get("id") == payment_id), None)
+        if found:
+            return found
+    if document_no:
+        found = next((p for p in payments if str(p.get("receiptNo") or "") == document_no), None)
+        if found:
+            return found
+    if len(payments) == 1:
+        return payments[0]
+    return None
+
+
 @crm.post("/leads/{lead_id}/whatsapp/document")
 async def crm_whatsapp_document(
     lead_id: str,
@@ -2151,12 +2195,13 @@ async def crm_whatsapp_document(
     track = _tracking_url(lead) or ""
     caption = (payload.message or "").strip() or (
         f"Hi {name}, your {label} {doc_no} for {code} is ready from Step Solar."
-        + (f" View: {track}" if track else "")
     )
 
     media_url = None
     media_kind = None
     filename = None
+    token = lead.get("tracking_token")
+
     if payload.doc_id:
         stored = await documents_collection.find_one(
             {"id": payload.doc_id, "lead_id": lead_id},
@@ -2164,7 +2209,6 @@ async def crm_whatsapp_document(
         )
         if not stored:
             raise HTTPException(status_code=404, detail="Document not found")
-        token = lead.get("tracking_token")
         if not token:
             raise HTTPException(status_code=400, detail="Lead has no tracking token")
         media_url = f"{base_url()}/api/track/{token}/documents/{payload.doc_id}"
@@ -2174,6 +2218,36 @@ async def crm_whatsapp_document(
             media_kind = "image"
         else:
             media_kind = "document"
+    elif doc_type.lower() in {"quotation", "commercial", "invoice", "receipt"}:
+        payment = None
+        if doc_type.lower() == "quotation" and not lead.get("quotation"):
+            raise HTTPException(status_code=400, detail="Create a quotation first")
+        if doc_type.lower() == "commercial" and not lead.get("quotation"):
+            raise HTTPException(status_code=400, detail="Create a quotation first")
+        if doc_type.lower() == "invoice" and not lead.get("invoice"):
+            raise HTTPException(status_code=400, detail="Create an invoice first")
+        if doc_type.lower() == "receipt":
+            payment = _payment_from_lead(lead, payload.payment_id, doc_no)
+            if not payment:
+                raise HTTPException(status_code=400, detail="Receipt payment not found")
+            if not doc_no:
+                doc_no = str(payment.get("receiptNo") or "")
+        try:
+            pdf_bytes, filename = generate_document_pdf(lead, doc_type.lower(), payment)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not token:
+            token = _new_tracking_token()
+        await leads_collection.update_one(
+            {"id": lead_id},
+            {"$set": {"tracking_token": token, "tracking_visible": True}},
+        )
+        lead["tracking_token"] = token
+        lead["tracking_visible"] = True
+        track = _tracking_url(lead) or track
+        stored_id = await _store_generated_pdf(lead, pdf_bytes, filename, doc_type.lower())
+        media_url = f"{base_url()}/api/track/{token}/documents/{stored_id}"
+        media_kind = "document"
 
     wacrm_out: Dict[str, Any] = {}
     try:
@@ -2193,7 +2267,7 @@ async def crm_whatsapp_document(
             "doc": f"{label} {doc_no}".strip(),
             "document_type": doc_type,
             "document_no": doc_no,
-            "link": track,
+            "link": media_url or track,
             "sent_by": user.full_name or user.email,
             "message": caption,
         }
@@ -2210,7 +2284,7 @@ async def crm_whatsapp_document(
 
     await _push_activity(lead_id, user, "whatsapp.document", f"WhatsApp {label} sent")
     data = wacrm_out.get("data") or wacrm_out
-    return {"ok": True, "status": "SUCCESS", "channel": "wacrm", "data": data}
+    return {"ok": True, "status": "SUCCESS", "channel": "wacrm", "data": data, "filename": filename}
 
 
 # --------------------------------------------------------------------------- #
@@ -2539,7 +2613,9 @@ async def public_track(token: str):
 
 @app.get("/api/track/{token}/documents/{doc_id}")
 async def public_track_document(token: str, doc_id: str):
-    lead = await _public_lead_or_404(token)
+    lead = await leads_collection.find_one({"tracking_token": token}, {"_id": 0, "id": 1})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Tracking link not found")
     doc = await documents_collection.find_one(
         {"id": doc_id, "lead_id": lead["id"]},
         {"_id": 0, "data": 1, "name": 1, "content_type": 1},
@@ -2547,10 +2623,16 @@ async def public_track_document(token: str, doc_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     from io import BytesIO
+    ctype = doc.get("content_type") or "application/octet-stream"
+    name = doc.get("name") or "document"
+    disposition = "inline" if ctype == "application/pdf" or str(ctype).startswith("image/") else "attachment"
     return StreamingResponse(
         BytesIO(doc["data"]),
-        media_type=doc.get("content_type", "application/octet-stream"),
-        headers={"Content-Disposition": f'attachment; filename="{doc.get("name", "document")}"'},
+        media_type=ctype,
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{name}"',
+            "Cache-Control": "public, max-age=300",
+        },
     )
 
 
