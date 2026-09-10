@@ -4,7 +4,7 @@ import { useStore, store } from '../lib/store';
 import { formatDate, formatINR, formatDateTime, timeAgo } from '../lib/format';
 import { Card, Icon, StageBadge, Avatar, Modal, Badge, useToast } from '../components/ui';
 import { PIPELINE_MAP, STAGE_STATUS, invoiceOutstanding } from '../lib/backend';
-import { getToken } from '../lib/api';
+import { api, getToken } from '../lib/api';
 import DocumentPreview from '../components/DocumentPreview';
 import WhatsAppChat from '../components/WhatsAppChat';
 import {
@@ -59,7 +59,7 @@ export default function LeadProfile() {
 
       {tab === 'Pipeline' && <PipelineTab lead={raw} toast={toast} />}
       {tab === 'Overview' && <OverviewTab lead={raw} toast={toast} />}
-      {tab === 'Field Updates' && <FieldUpdatesTab lead={raw} />}
+      {tab === 'Field Updates' && <FieldUpdatesTab lead={raw} toast={toast} />}
       {tab === 'Quotation' && <QuotationTab lead={raw} toast={toast} />}
       {tab === 'Invoice' && <InvoiceTab lead={raw} toast={toast} />}
       {tab === 'Tasks' && <TasksTab lead={raw} toast={toast} />}
@@ -209,7 +209,7 @@ function mapsUrl(loc) {
   return `https://www.google.com/maps?q=${loc.lat},${loc.lng}`;
 }
 
-function FieldUpdatesTab({ lead }) {
+function FieldUpdatesTab({ lead, toast }) {
   const stages = lead.stages || [];
   const withField = stages.filter((s) => s.location || s.notes || (s.documents || []).length);
   const gpsCount = stages.filter((s) => s.location && s.location.lat != null).length;
@@ -309,6 +309,7 @@ function FieldUpdatesTab({ lead }) {
                               {d.uploaded_by ? ` · ${d.uploaded_by}` : ''}
                             </div>
                           </div>
+                          <SendWhatsAppFile leadId={lead.id} docId={d.id} documentType="photo" documentNo={d.name} toast={toast} />
                         </div>
                       ))}
                     </div>
@@ -556,6 +557,7 @@ function QuotationTab({ lead, toast }) {
         action={
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-outline btn-sm" onClick={() => setPreview(true)}><Icon name="file" size={13} /> Preview / Print</button>
+            <SendWhatsAppFile leadId={lead.id} documentType={q.kind === 'commercial' ? 'commercial' : 'quotation'} documentNo={q.number || lead.code} toast={toast} />
             <button className="btn btn-outline btn-sm" onClick={() => setEditOpen(true)}><Icon name="edit" size={13} /> Edit Items</button>
           </div>
         }>
@@ -628,7 +630,7 @@ function QuotationTab({ lead, toast }) {
       </div>
 
       <QuoteEditor lead={lead} open={editOpen} onClose={() => setEditOpen(false)} toast={toast} />
-      <DocumentPreview open={preview} onClose={() => setPreview(false)} record={quotationRecord(lead)} title={`Quotation — ${lead.name}`} />
+      <DocumentPreview open={preview} onClose={() => setPreview(false)} record={quotationRecord(lead)} title={`Quotation — ${lead.name}`} leadId={lead.id} documentType={q.kind === 'commercial' ? 'commercial' : 'quotation'} documentNo={q.number || lead.code} />
     </div>
   );
 }
@@ -872,7 +874,12 @@ function InvoiceTab({ lead, toast }) {
   return (
     <div className="grid-2" style={{ gridTemplateColumns: '1.6fr 1fr' }}>
       <Card title={`Invoice ${inv.number}`} pad={false} subtitle={`Based on quotation rev. ${inv.basedOnQuotationRevision || '—'}`}
-        action={<button className="btn btn-outline btn-sm" onClick={() => setPreview(true)}><Icon name="file" size={13} /> Preview / Print</button>}>
+        action={
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-outline btn-sm" onClick={() => setPreview(true)}><Icon name="file" size={13} /> Preview / Print</button>
+            <SendWhatsAppFile leadId={lead.id} documentType="invoice" documentNo={inv.number} toast={toast} />
+          </div>
+        }>
         <div className="table-wrap">
           <table className="data">
             <thead><tr><th>Description</th><th>HSN/SAC</th><th>Qty</th><th>Unit</th><th>Price</th><th>GST %</th><th style={{ textAlign: 'right' }}>Amount</th></tr></thead>
@@ -923,6 +930,7 @@ function InvoiceTab({ lead, toast }) {
                   <div className="cell-sub">{p.receiptNo} · {formatDateTime(p.at)} · {p.received_by}</div>
                 </div>
                 <button className="icon-btn" title="Print receipt" onClick={() => setReceiptPreview(p)}><Icon name="file" size={14} /></button>
+                <SendWhatsAppFile leadId={lead.id} documentType="receipt" documentNo={p.receiptNo} toast={toast} compact />
                 <button className="icon-btn" title="Remove" onClick={() => removePayment(p.id)}><Icon name="trash" size={14} /></button>
               </div>
             ))
@@ -959,8 +967,8 @@ function InvoiceTab({ lead, toast }) {
           <div className="field"><label>Note</label><input className="input" value={pay.note} onChange={(e) => setPay({ ...pay, note: e.target.value })} /></div>
         </div>
       </Modal>
-      <DocumentPreview open={preview} onClose={() => setPreview(false)} record={invoiceRecord(lead)} title={`Invoice ${inv.number}`} />
-      <DocumentPreview open={Boolean(receiptPreview)} onClose={() => setReceiptPreview(null)} record={receiptPreview ? receiptRecord(lead, receiptPreview) : null} title={`Receipt ${receiptPreview?.receiptNo || ''}`} />
+      <DocumentPreview open={preview} onClose={() => setPreview(false)} record={invoiceRecord(lead)} title={`Invoice ${inv.number}`} leadId={lead.id} documentType="invoice" documentNo={inv.number} />
+      <DocumentPreview open={Boolean(receiptPreview)} onClose={() => setReceiptPreview(null)} record={receiptPreview ? receiptRecord(lead, receiptPreview) : null} title={`Receipt ${receiptPreview?.receiptNo || ''}`} leadId={lead.id} documentType="receipt" documentNo={receiptPreview?.receiptNo} />
     </div>
   );
 }
@@ -1179,6 +1187,7 @@ function DocumentsTab({ lead, toast }) {
                     <div style={{ fontSize: 11.5, color: 'var(--slate-400)' }}>{Math.round((d.size || 0) / 1024)} KB · {formatDateTime(d.at)}</div>
                   </div>
                   <button className="icon-btn" onClick={() => download(s.key, d)}><Icon name="download" size={14} /></button>
+                  <SendWhatsAppFile leadId={lead.id} docId={d.id} documentType="file" documentNo={d.name} toast={toast} compact />
                   <button className="icon-btn" onClick={() => remove(s.key, d.id)}><Icon name="trash" size={14} /></button>
                 </div>
               ))}
@@ -1187,6 +1196,44 @@ function DocumentsTab({ lead, toast }) {
         })}
       </div>
     </Card>
+  );
+}
+
+function SendWhatsAppFile({ leadId, docId, documentType = 'document', documentNo = '', toast, compact }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function send(e) {
+    e?.stopPropagation?.();
+    if (busy || done) return;
+    setBusy(true);
+    try {
+      const out = await api.sendWhatsappDocument(leadId, {
+        document_type: documentType,
+        document_no: documentNo || '',
+        doc_id: docId || undefined,
+      });
+      if (!out.ok) throw new Error(out.error || 'Send failed');
+      setDone(true);
+      toast?.('Sent via WhatsApp');
+    } catch (err) {
+      toast?.(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (compact) {
+    return (
+      <button className="icon-btn" title={done ? 'Sent' : 'Send via WhatsApp'} onClick={send} disabled={busy || done} style={{ color: 'var(--green-600)' }}>
+        <Icon name="whatsapp" size={14} />
+      </button>
+    );
+  }
+  return (
+    <button className="btn btn-whatsapp btn-sm" onClick={send} disabled={busy || done}>
+      <Icon name="whatsapp" size={13} /> {done ? 'Sent' : busy ? 'Sending…' : 'Send via WhatsApp'}
+    </button>
   );
 }
 

@@ -111,6 +111,7 @@ export const api = {
   whatsappTestSend: (data) => request('/crm/whatsapp/test-send', { method: 'POST', body: data }),
   whatsappChat: (phone) => request(`/crm/whatsapp/chat?phone=${encodeURIComponent(phone)}`),
   whatsappChatSend: (data) => request('/crm/whatsapp/chat', { method: 'POST', body: data }),
+  sendWhatsappDocument: (leadId, data) => request(`/crm/leads/${leadId}/whatsapp/document`, { method: 'POST', body: data }),
   adminUsers: () => request('/admin/users'),
   createAdminUser: (data) => request('/admin/users', { method: 'POST', body: data }),
   patchAdminUser: (id, data) => request(`/admin/users/${id}`, { method: 'PATCH', body: data }),

@@ -4,6 +4,7 @@ import { useStore, store } from '../lib/store';
 import { Card, Icon, Badge, Modal, useToast } from '../components/ui';
 import { formatINR, formatDate } from '../lib/format';
 import DocumentPreview from '../components/DocumentPreview';
+import { api } from '../lib/api';
 import { COMPANY, defaultQuoteItemsForCapacity, documentTotals, quotationRecord } from '../lib/documents';
 
 const STATUS_TONE = { Draft: 'slate', Sent: 'amber', Approved: 'green', Rejected: 'crimson' };
@@ -102,6 +103,16 @@ export default function Proposals() {
                       <td>{q.revision || 1}</td>
                       <td style={{ textAlign: 'right' }}>
                         <button className="btn btn-sm btn-outline" onClick={(e) => { e.stopPropagation(); setPreview(l); }}><Icon name="file" size={13} /> Print</button>
+                        <button className="btn btn-sm btn-whatsapp" onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            const out = await api.sendWhatsappDocument(l.id, { document_type: l.quotation?.kind === 'commercial' ? 'commercial' : 'quotation', document_no: l.quotation?.number || l.code });
+                            if (!out.ok) throw new Error(out.error || 'Send failed');
+                            toast('Quotation sent via WhatsApp');
+                          } catch (err) {
+                            toast(err.message, 'error');
+                          }
+                        }}><Icon name="whatsapp" size={13} /> WhatsApp</button>
                         <button className="btn btn-sm btn-outline" onClick={(e) => { e.stopPropagation(); navigate(`/leads/${l.id}`); }}><Icon name="chev" size={13} /> View</button>
                       </td>
                     </tr>
@@ -137,7 +148,7 @@ export default function Proposals() {
           </div>
         )}
       </Modal>
-      <DocumentPreview open={Boolean(preview)} onClose={() => setPreview(null)} record={preview ? quotationRecord(preview) : null} title={`Quotation — ${preview?.name || ''}`} />
+      <DocumentPreview open={Boolean(preview)} onClose={() => setPreview(null)} record={preview ? quotationRecord(preview) : null} title={`Quotation — ${preview?.name || ''}`} leadId={preview?.id} documentType={preview?.quotation?.kind === 'commercial' ? 'commercial' : 'quotation'} documentNo={preview?.quotation?.number || preview?.code} />
     </div>
   );
 }

@@ -1878,6 +1878,8 @@ class WhatsAppDocumentSend(BaseModel):
     document_type: Optional[str] = Field(default="document", max_length=40)
     document_no: Optional[str] = Field(default="", max_length=80)
     message: Optional[str] = Field(default=None, max_length=2000)
+    stage_key: Optional[str] = Field(default=None, max_length=80)
+    doc_id: Optional[str] = Field(default=None, max_length=80)
 
 
 class WhatsAppChatSend(BaseModel):
@@ -2129,8 +2131,11 @@ async def crm_whatsapp_document(
     payload: WhatsAppDocumentSend,
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Send a quotation/invoice/receipt notice via the WhatsApp Business API."""
+    """Send a quotation/invoice/receipt/file to the customer via WaCRM WhatsApp API."""
     lead = await _get_lead_or_404(lead_id)
+    phone = _e164_phone(lead.get("phone"))
+    if not phone:
+        raise HTTPException(status_code=400, detail="Lead has no valid phone number")
     doc_type = (payload.document_type or "document").strip() or "document"
     doc_no = (payload.document_no or "").strip()
     label = {
@@ -2138,19 +2143,74 @@ async def crm_whatsapp_document(
         "commercial": "commercial quotation",
         "invoice": "invoice",
         "receipt": "payment receipt",
+        "photo": "site photo",
+        "file": "document",
     }.get(doc_type.lower(), doc_type)
-    extra: Dict[str, Any] = {
-        "doc": f"{label} {doc_no}".strip(),
-        "document_type": doc_type,
-        "document_no": doc_no,
-        "link": _tracking_url(lead) or "",
-        "sent_by": user.full_name or user.email,
-    }
-    if payload.message:
-        extra["message"] = payload.message
-    out = await _notify_whatsapp(lead, "DOCUMENT_SENT", extra)
+    name = (lead.get("full_name") or lead.get("name") or "there").split(" ")[0]
+    code = lead.get("code") or ""
+    track = _tracking_url(lead) or ""
+    caption = (payload.message or "").strip() or (
+        f"Hi {name}, your {label} {doc_no} for {code} is ready from Step Solar."
+        + (f" View: {track}" if track else "")
+    )
+
+    media_url = None
+    media_kind = None
+    filename = None
+    if payload.doc_id:
+        stored = await documents_collection.find_one(
+            {"id": payload.doc_id, "lead_id": lead_id},
+            {"_id": 0, "name": 1, "content_type": 1},
+        )
+        if not stored:
+            raise HTTPException(status_code=404, detail="Document not found")
+        token = lead.get("tracking_token")
+        if not token:
+            raise HTTPException(status_code=400, detail="Lead has no tracking token")
+        media_url = f"{base_url()}/api/track/{token}/documents/{payload.doc_id}"
+        filename = stored.get("name") or "document"
+        ctype = str(stored.get("content_type") or "")
+        if ctype.startswith("image/"):
+            media_kind = "image"
+        else:
+            media_kind = "document"
+
+    wacrm_out: Dict[str, Any] = {}
+    try:
+        body: Dict[str, Any] = {"to": phone}
+        if media_url:
+            body["type"] = media_kind
+            body["media_url"] = media_url
+            body["text"] = caption
+            if filename and media_kind == "document":
+                body["filename"] = filename
+        else:
+            body["type"] = "text"
+            body["text"] = caption
+        wacrm_out = await _wacrm_request("POST", "/api/v1/messages", json_body=body)
+    except HTTPException as e:
+        extra: Dict[str, Any] = {
+            "doc": f"{label} {doc_no}".strip(),
+            "document_type": doc_type,
+            "document_no": doc_no,
+            "link": track,
+            "sent_by": user.full_name or user.email,
+            "message": caption,
+        }
+        fallback = await _notify_whatsapp(lead, "DOCUMENT_SENT", extra)
+        if not fallback.get("ok"):
+            raise HTTPException(status_code=e.status_code, detail=e.detail)
+        await _push_activity(lead_id, user, "whatsapp.document", f"WhatsApp {label} sent")
+        return {
+            "ok": True,
+            "status": fallback.get("status"),
+            "log_id": fallback.get("log_id"),
+            "channel": "provider",
+        }
+
     await _push_activity(lead_id, user, "whatsapp.document", f"WhatsApp {label} sent")
-    return {"ok": out.get("ok", False), "status": out.get("status"), "log_id": out.get("log_id"), "error": out.get("error")}
+    data = wacrm_out.get("data") or wacrm_out
+    return {"ok": True, "status": "SUCCESS", "channel": "wacrm", "data": data}
 
 
 # --------------------------------------------------------------------------- #
