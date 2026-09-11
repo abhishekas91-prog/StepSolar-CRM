@@ -29,6 +29,11 @@ const NAV = [
   },
 ];
 
+const ADMIN_NAV = {
+  group: 'Admin',
+  items: [{ to: '/master-config', label: 'Master Config', icon: 'wrench' }],
+};
+
 const TITLES = {
   '/': { title: 'Executive Dashboard', sub: 'Real-time overview of the entire business' },
   '/leads': { title: 'Leads Management', sub: 'Full sales pipeline — table & kanban' },
@@ -38,6 +43,8 @@ const TITLES = {
   '/subsidies': { title: 'Subsidy & DISCOM Desk', sub: 'Regulatory compliance pipeline' },
   '/billing': { title: 'Billing & Receivables', sub: 'Milestone invoices & payment logging' },
   '/service': { title: 'After-Sales & Field Desk', sub: 'Open tasks, dispatch & maintenance' },
+  '/master-config': { title: 'Master Config', sub: 'WhatsApp Business API & agent accounts' },
+  '/whatsapp': { title: 'Master Config', sub: 'WhatsApp Business API & agent accounts' },
 };
 
 export default function Shell() {
@@ -79,7 +86,7 @@ export default function Shell() {
         </div>
 
         <nav style={{ flex: 1, paddingBottom: 16 }}>
-          {NAV.map((grp) => (
+          {(user?.role === 'Admin' ? [...NAV, ADMIN_NAV] : NAV).map((grp) => (
             <div key={grp.group}>
               <div className="nav-group-label">{grp.group}</div>
               {grp.items.map((item) => (

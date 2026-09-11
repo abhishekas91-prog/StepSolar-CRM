@@ -1428,3 +1428,90 @@ table.data tbody tr.clickable {
   text-align: center;
   color: var(--slate-400);
 }
+
+.master-config-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 980px) {
+  .master-config-grid { grid-template-columns: 1fr; }
+}
+
+.wa-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 90;
+  animation: fadeIn 0.15s;
+}
+.wa-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  max-width: 100vw;
+  background: #ece5dd;
+  z-index: 95;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.15);
+  display: flex;
+  flex-direction: column;
+  animation: slideLeft 0.2s;
+}
+.wa-drawer-head {
+  background: #075e54;
+  color: #fff;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wa-drawer-head h3 { font-size: 15px; font-weight: 700; }
+.wa-drawer-head p { font-size: 12px; opacity: 0.85; margin-top: 3px; font-weight: 500; }
+.wa-drawer-head .icon-btn { color: #fff; }
+.wa-drawer-thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wa-drawer-empty {
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+  padding: 28px 12px;
+}
+.wa-msg {
+  max-width: 82%;
+  border-radius: 8px;
+  padding: 8px 10px 6px;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.08);
+}
+.wa-msg p { font-size: 14px; line-height: 1.35; white-space: pre-wrap; word-break: break-word; }
+.wa-msg span { display: block; text-align: right; font-size: 10px; color: #64748b; margin-top: 4px; }
+.wa-msg.out { margin-left: auto; background: #dcf8c6; }
+.wa-msg.in { margin-right: auto; background: #fff; }
+.wa-drawer-err {
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 14px;
+}
+.wa-drawer-compose {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #f0f2f5;
+  border-top: 1px solid var(--slate-200);
+}
+.wa-drawer-compose .input {
+  flex: 1;
+  border-radius: 20px;
+  padding: 10px 14px;
+}

@@ -6,20 +6,24 @@ configured through environment variables, so switching providers never
 requires a code change:
 
     CUSTOM_WHATSAPP_API_URL     - endpoint that receives the WhatsApp payload
-                                  (POST, JSON). If unset the whole feature is
-                                  disabled and every call no-ops cleanly.
-    CUSTOM_WHATSAPP_API_KEY     - secret sent in the auth header (optional).
+                                  (POST, JSON). Defaults to the Step Solar
+                                  WaCRM public API
+                                  (https://whatsapp.stepsolar.in/api/v1/messages).
+                                  Set to empty to disable the feature.
+    CUSTOM_WHATSAPP_API_KEY     - WaCRM API key (wacrm_live_…). Required unless
+                                  WHATSAPP_AUTH_MODE=none. Create in WaCRM
+                                  Settings → API keys (shown once).
     WHATSAPP_API_KEY_HEADER     - header name for the key. Default "Authorization".
-    WHATSAPP_AUTH_MODE          - "bearer" (default when a key is set) or "none".
+    WHATSAPP_AUTH_MODE          - "bearer" (WaCRM default), "apikey", or "none".
     WHATSAPP_SENDER_ID          - business sender id / from number (optional).
     WHATSAPP_PAYLOAD_TEMPLATE   - (optional) JSON template with {{placeholder}}
-                                  substitution for the exact body the provider
-                                  expects. When unset a sensible default
-                                  envelope is sent. Supported placeholders:
+                                  substitution. When unset the WaCRM body
+                                  {to, type, text, name} is sent. Placeholders:
                                   {{event}} {{lead_id}} {{lead_code}}
                                   {{customer_name}} {{phone}} {{sender_id}}
                                   {{timestamp}} {{stage_key}} {{stage_label}}
                                   {{message}} {{extra}} {{base_url}}
+                                  {{media_url}} {{filename}}
     WHATSAPP_MAX_ATTEMPTS       - max send attempts per message (default 3).
     WHATSAPP_REQUEST_TIMEOUT_SECONDS - HTTP timeout per attempt (default 10).
 
@@ -133,6 +137,8 @@ _EVENT_MESSAGES = {
 # --------------------------------------------------------------------------- #
 _runtime_cfg: Dict[str, Any] = {}
 
+WACRM_MESSAGES_URL = "https://whatsapp.stepsolar.in/api/v1/messages"
+
 
 def set_runtime_config(cfg: Optional[Dict[str, Any]]) -> None:
     """Replace the DB-backed runtime config (from the `settings` collection).
@@ -162,11 +168,21 @@ def base_url() -> str:
 
 
 def whatsapp_api_url() -> str:
-    return str(_from_runtime("api_url", os.environ.get("CUSTOM_WHATSAPP_API_URL", ""))).strip()
+    if "api_url" in _runtime_cfg:
+        return str(_runtime_cfg.get("api_url") or "").strip()
+    if "CUSTOM_WHATSAPP_API_URL" in os.environ:
+        return str(os.environ.get("CUSTOM_WHATSAPP_API_URL") or "").strip()
+    return WACRM_MESSAGES_URL
 
 
 def whatsapp_enabled() -> bool:
-    return bool(whatsapp_api_url())
+    """True when a provider URL is set and auth is usable (key, or auth_mode=none)."""
+    if not whatsapp_api_url():
+        return False
+    if _api_key():
+        return True
+    mode = str(_from_runtime("auth_mode", os.environ.get("WHATSAPP_AUTH_MODE", "")) or "").strip().lower()
+    return mode == "none"
 
 
 def _api_key() -> str:
@@ -179,7 +195,7 @@ def _key_header() -> str:
 
 
 def _auth_mode() -> str:
-    mode = str(_from_runtime("auth_mode", "") or "").strip().lower()
+    mode = str(_from_runtime("auth_mode", os.environ.get("WHATSAPP_AUTH_MODE", "")) or "").strip().lower()
     if mode:
         return mode
     return "bearer" if _api_key() else "none"
@@ -220,6 +236,25 @@ def _payload_template() -> Optional[Dict[str, Any]]:
         return None
 
 
+def _provider_error_message(text: str) -> str:
+    """Prefer WaCRM `{error: {message}}` over the raw HTTP body."""
+    raw = (text or "").strip()
+    if not raw:
+        return "send_failed"
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw[:300]
+    err = data.get("error") if isinstance(data, dict) else None
+    if isinstance(err, dict):
+        msg = err.get("message") or err.get("code")
+        if msg:
+            return str(msg)[:300]
+    if isinstance(err, str) and err:
+        return err[:300]
+    return raw[:300]
+
+
 def _mask_secret(secret: str) -> str:
     if not secret:
         return ""
@@ -243,6 +278,9 @@ def effective_config(mask_key: bool = True) -> Dict[str, Any]:
         "base_url": base_url(),
         "api_key_set": bool(key),
         "api_key_masked": _mask_secret(key) if mask_key else key,
+        "wacrm_base_url": wacrm_origin(),
+        "wacrm_api_key_set": bool(_wacrm_api_key()),
+        "wacrm_api_key_masked": _mask_secret(_wacrm_api_key()) if mask_key else _wacrm_api_key(),
     }
 
 
@@ -250,9 +288,24 @@ def effective_config(mask_key: bool = True) -> Dict[str, Any]:
 # Payload building — default envelope + optional env-provided JSON template
 # --------------------------------------------------------------------------- #
 def _normalise_phone(phone: Any) -> str:
-    s = str(phone or "").strip()
-    digits = "".join(ch for ch in s if ch.isdigit() or ch == "+")
-    return digits
+    """Return an E.164 number with a leading +, or "" if there are no digits.
+
+    Indian 10-digit mobiles (6–9…) become +91XXXXXXXXXX. Values that already
+    include a country code are kept as +<digits>. WaCRM / Meta accept this
+    form on POST /api/v1/messages (`to`).
+    """
+    digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
+    if not digits:
+        return ""
+    if digits.startswith("00"):
+        digits = digits[2:]
+    if len(digits) == 11 and digits.startswith("0") and digits[1] in "6789":
+        digits = digits[1:]
+    if len(digits) == 10 and digits[0] in "6789":
+        digits = "91" + digits
+    if not digits or digits[0] == "0":
+        return ""
+    return "+" + digits
 
 
 def _event_message(event: str, lead: Dict[str, Any], extra: Dict[str, Any]) -> str:
@@ -261,13 +314,16 @@ def _event_message(event: str, lead: Dict[str, Any], extra: Dict[str, Any]) -> s
     code = lead.get("code") or ""
     when = extra.get("when") or ""
     link = extra.get("link") or ""
-    return template.format(
+    text = template.format(
         name=name.split(" ")[0] if name else "there",
         code=code,
         when=when,
         link=link,
         doc=extra.get("doc") or extra.get("document_type") or "document",
     )
+    if link and link not in text:
+        text = f"{text} {link}".strip()
+    return text
 
 
 def _stage_of(lead: Dict[str, Any], event: str) -> Dict[str, Any]:
@@ -278,26 +334,41 @@ def _stage_of(lead: Dict[str, Any], event: str) -> Dict[str, Any]:
     return {}
 
 
+def _media_kind(extra: Dict[str, Any]) -> str:
+    kind = str(extra.get("media_type") or extra.get("type") or "").strip().lower()
+    if kind in {"image", "video", "document", "audio"}:
+        return kind
+    filename = str(extra.get("filename") or "").strip().lower()
+    if filename.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp")):
+        return "image"
+    if filename.endswith((".mp4", ".mov", ".webm")):
+        return "video"
+    if filename.endswith((".mp3", ".ogg", ".wav", ".m4a")):
+        return "audio"
+    return "document"
+
+
 def _default_payload(lead: Dict[str, Any], event: str, extra: Dict[str, Any]) -> Dict[str, Any]:
-    """Provider-agnostic envelope used when no WHATSAPP_PAYLOAD_TEMPLATE is set."""
-    return {
-        "type": event,
-        "channel": "whatsapp",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "senderId": _sender_id() or None,
-        "recipient": {
-            "phone": _normalise_phone(lead.get("phone") or extra.get("phone")),
-            "name": lead.get("full_name") or "",
-        },
-        "lead": {
-            "id": lead.get("id"),
-            "code": lead.get("code"),
-            "stageKey": extra.get("stage_key") or _stage_of(lead, event).get("key"),
-            "stageLabel": extra.get("stage_label") or _stage_of(lead, event).get("label"),
-        },
-        "data": extra,
-        "message": extra.get("message") or _event_message(event, lead, extra),
+    """WaCRM public API body: POST /api/v1/messages `{to, type, text, name, ...}`."""
+    phone = _normalise_phone(lead.get("phone") or extra.get("phone"))
+    name = str(lead.get("full_name") or lead.get("name") or "").strip()
+    text = str(extra.get("message") or _event_message(event, lead, extra) or "")
+    payload: Dict[str, Any] = {
+        "to": phone,
+        "type": "text",
+        "text": text,
     }
+    if name:
+        payload["name"] = name
+
+    media_url = str(extra.get("media_url") or "").strip()
+    if media_url.startswith("http://") or media_url.startswith("https://"):
+        payload["type"] = _media_kind(extra)
+        payload["media_url"] = media_url
+        filename = str(extra.get("filename") or "").strip()
+        if filename:
+            payload["filename"] = filename
+    return payload
 
 
 def _substitute_placeholders(template: Dict[str, Any], context: Dict[str, str]) -> Dict[str, Any]:
@@ -329,7 +400,7 @@ def build_payload(lead: Dict[str, Any], event: str, extra: Dict[str, Any]) -> Di
         "event": event,
         "lead_id": str(lead.get("id") or ""),
         "lead_code": str(lead.get("code") or ""),
-        "customer_name": str(lead.get("full_name") or ""),
+        "customer_name": str(lead.get("full_name") or lead.get("name") or ""),
         "phone": phone,
         "sender_id": _sender_id(),
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -338,6 +409,8 @@ def build_payload(lead: Dict[str, Any], event: str, extra: Dict[str, Any]) -> Di
         "message": str(extra.get("message") or _event_message(event, lead, extra)),
         "extra": json.dumps(extra, ensure_ascii=False, default=str),
         "base_url": base_url(),
+        "media_url": str(extra.get("media_url") or ""),
+        "filename": str(extra.get("filename") or ""),
     }
     return _substitute_placeholders(template, context)
 
@@ -356,7 +429,11 @@ async def _post(phone: str, payload: Dict[str, Any], log_id: str) -> Dict[str, A
     elif _auth_mode() == "apikey" and _api_key():
         headers[_key_header()] = _api_key()
 
-    body = {"id": log_id, "phone": phone, **payload} if isinstance(payload, dict) else payload
+    # Send the provider body as-is. WaCRM rejects unknown wrapper fields
+    # (id/phone) — `to` must already be on the payload.
+    body = payload if isinstance(payload, dict) else payload
+    if isinstance(body, dict) and phone and not str(body.get("to") or "").strip():
+        body = {**body, "to": phone}
     try:
         async with httpx.AsyncClient(timeout=_timeout_seconds()) as client:
             resp = await client.post(url, json=body, headers=headers)
@@ -367,7 +444,11 @@ async def _post(phone: str, payload: Dict[str, Any], log_id: str) -> Dict[str, A
             "WhatsApp provider returned HTTP %s for message %s: %s",
             resp.status_code, log_id, text,
         )
-        return {"ok": False, "status_code": resp.status_code, "response": text}
+        return {
+            "ok": False,
+            "status_code": resp.status_code,
+            "response": _provider_error_message(text),
+        }
     except Exception as e:  # noqa: BLE001
         logger.warning("WhatsApp send failed for message %s: %s", log_id, e)
         return {"ok": False, "status_code": None, "response": str(e)}
@@ -396,8 +477,14 @@ async def send_whatsapp(
         "lead_id": lead.get("id"),
         "lead_code": lead.get("code"),
         "event": event,
-        "stage_key": payload.get("lead", {}).get("stageKey") if isinstance(payload.get("lead"), dict) else extra.get("stage_key"),
-        "recipient": _normalise_phone(lead.get("phone") or extra.get("phone")),
+        "stage_key": extra.get("stage_key") or (
+            payload.get("lead", {}).get("stageKey") if isinstance(payload.get("lead"), dict) else None
+        ),
+        "recipient": (
+            _normalise_phone(payload.get("to"))
+            if isinstance(payload, dict)
+            else ""
+        ) or _normalise_phone(lead.get("phone") or extra.get("phone")),
         "sender_id": _sender_id() or None,
         "payload": payload,
         "status": "PENDING",
@@ -448,7 +535,12 @@ async def send_whatsapp(
     except Exception:  # noqa: BLE001
         logger.exception("Failed to update WhatsApp log %s", log_doc["id"])
 
-    return {"ok": outcome["ok"], "status": status, "log_id": log_doc["id"]}
+    return {
+        "ok": outcome["ok"],
+        "status": status,
+        "log_id": log_doc["id"],
+        "error": None if outcome["ok"] else (outcome.get("response") or "send_failed"),
+    }
 
 
 async def notify_stage_event(
@@ -517,3 +609,197 @@ async def retry_failed_messages(
         time.sleep(0.1)
 
     return {"retried": retried, "succeeded": succeeded, "failed": retried - succeeded, "errors": errors[:20]}
+
+
+# --------------------------------------------------------------------------- #
+# WaCRM live thread (inbox) — used by CRM + field-app chat popups
+# --------------------------------------------------------------------------- #
+def _wacrm_api_key() -> str:
+    """Key used for WaCRM inbox GETs. Falls back to the provider send key."""
+    explicit = str(_from_runtime("wacrm_api_key", os.environ.get("WACRM_API_KEY", ""))).strip()
+    return explicit or _api_key()
+
+
+def wacrm_origin() -> str:
+    explicit = str(_from_runtime("wacrm_base_url", os.environ.get("WACRM_BASE_URL", ""))).strip().rstrip("/")
+    if explicit:
+        return explicit
+    url = whatsapp_api_url().rstrip("/")
+    for suffix in ("/api/v1/messages", "/api/v1"):
+        if url.endswith(suffix):
+            url = url[: -len(suffix)]
+            break
+    return url.rstrip("/")
+
+
+def _wacrm_headers() -> Dict[str, str]:
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    key = _wacrm_api_key()
+    if _auth_mode() == "bearer" and key:
+        headers[_key_header()] = f"Bearer {key}"
+    elif _auth_mode() == "apikey" and key:
+        headers[_key_header()] = key
+    return headers
+
+
+def _phone_digits(phone: Any) -> str:
+    return "".join(ch for ch in str(phone or "") if ch.isdigit())
+
+
+def _phones_match(a: Any, b: Any) -> bool:
+    d1, d2 = _phone_digits(a), _phone_digits(b)
+    if not d1 or not d2:
+        return False
+    if d1 == d2:
+        return True
+    n = min(10, len(d1), len(d2))
+    return n >= 8 and d1[-n:] == d2[-n:]
+
+
+def _public_message(raw: Dict[str, Any]) -> Dict[str, Any]:
+    text = raw.get("content_text") or raw.get("text") or ""
+    if not text and raw.get("template_name"):
+        text = str(raw.get("template_name"))
+    if not text and raw.get("media_url"):
+        text = raw.get("filename") or raw.get("content_type") or "attachment"
+    return {
+        "id": raw.get("id"),
+        "direction": raw.get("direction") or (
+            "inbound" if raw.get("sender_type") == "customer" else "outbound"
+        ),
+        "text": text,
+        "media_url": raw.get("media_url"),
+        "content_type": raw.get("content_type") or "text",
+        "status": raw.get("status") or "",
+        "created_at": raw.get("created_at"),
+    }
+
+
+async def _wacrm_get(path: str) -> Dict[str, Any]:
+    import httpx
+
+    origin = wacrm_origin()
+    if not origin:
+        return {"ok": False, "status_code": None, "data": None, "error": "whatsapp_disabled"}
+    url = origin + path
+    try:
+        async with httpx.AsyncClient(timeout=_timeout_seconds()) as client:
+            resp = await client.get(url, headers=_wacrm_headers())
+        text = (resp.text or "")[:2000]
+        parsed: Any = None
+        try:
+            parsed = json.loads(resp.text) if resp.text else None
+        except json.JSONDecodeError:
+            parsed = None
+        if 200 <= resp.status_code < 300:
+            return {"ok": True, "status_code": resp.status_code, "data": parsed, "error": None}
+        return {
+            "ok": False,
+            "status_code": resp.status_code,
+            "data": parsed,
+            "error": _provider_error_message(text),
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.warning("WaCRM GET %s failed: %s", path, e)
+        return {"ok": False, "status_code": None, "data": None, "error": str(e)}
+
+
+async def fetch_chat_thread(lead: Dict[str, Any]) -> Dict[str, Any]:
+    """Load the WaCRM conversation for a lead phone (empty list if none yet)."""
+    phone = _normalise_phone(lead.get("phone"))
+    empty = {
+        "ok": True,
+        "enabled": True,
+        "phone": phone,
+        "conversation_id": None,
+        "contact_id": None,
+        "messages": [],
+    }
+    if not whatsapp_enabled():
+        return {**empty, "ok": False, "enabled": False, "error": "whatsapp_disabled"}
+    if not phone:
+        return {**empty, "ok": False, "error": "no_phone"}
+
+    from urllib.parse import quote
+
+    search = _phone_digits(phone)[-10:] or _phone_digits(phone)
+    contacts_out = await _wacrm_get(f"/api/v1/contacts?search={quote(search)}&limit=50")
+    if not contacts_out["ok"]:
+        return {**empty, "ok": False, "error": contacts_out.get("error") or "contacts_failed"}
+
+    rows = (contacts_out.get("data") or {}).get("data") if isinstance(contacts_out.get("data"), dict) else []
+    contact = next(
+        (c for c in (rows or []) if isinstance(c, dict) and _phones_match(c.get("phone"), phone)),
+        None,
+    )
+    if not contact:
+        return empty
+
+    contact_id = contact.get("id")
+    conv_out = await _wacrm_get(f"/api/v1/conversations?contact_id={quote(str(contact_id))}&limit=20")
+    if not conv_out["ok"]:
+        return {**empty, "ok": False, "contact_id": contact_id, "error": conv_out.get("error")}
+
+    conv_rows = (conv_out.get("data") or {}).get("data") if isinstance(conv_out.get("data"), dict) else []
+    conv = (conv_rows or [None])[0] if conv_rows else None
+    if not isinstance(conv, dict):
+        return {**empty, "contact_id": contact_id}
+
+    conv_id = conv.get("id")
+    msg_out = await _wacrm_get(f"/api/v1/conversations/{conv_id}/messages?limit=80")
+    if not msg_out["ok"]:
+        return {
+            **empty,
+            "ok": False,
+            "contact_id": contact_id,
+            "conversation_id": conv_id,
+            "error": msg_out.get("error"),
+        }
+    items = (msg_out.get("data") or {}).get("data") if isinstance(msg_out.get("data"), dict) else []
+    messages = [_public_message(m) for m in (items or []) if isinstance(m, dict)]
+    messages.reverse()
+    return {
+        "ok": True,
+        "enabled": True,
+        "phone": phone,
+        "conversation_id": conv_id,
+        "contact_id": contact_id,
+        "messages": messages,
+    }
+
+
+async def send_chat_text(lead: Dict[str, Any], text: str) -> Dict[str, Any]:
+    """Send a free-form WhatsApp text via WaCRM POST /api/v1/messages."""
+    if not whatsapp_enabled():
+        return {"ok": False, "error": "whatsapp_disabled"}
+    body = (text or "").strip()
+    if not body:
+        return {"ok": False, "error": "empty_message"}
+    phone = _normalise_phone(lead.get("phone"))
+    if not phone:
+        return {"ok": False, "error": "no_phone"}
+    payload: Dict[str, Any] = {"to": phone, "type": "text", "text": body}
+    name = str(lead.get("full_name") or lead.get("name") or "").strip()
+    if name:
+        payload["name"] = name
+    log_id = str(uuid.uuid4())
+    outcome = await _post(phone, payload, log_id)
+    conversation_id = None
+    message_id = None
+    raw = outcome.get("response") or ""
+    try:
+        parsed = json.loads(raw) if raw else {}
+        data = parsed.get("data") if isinstance(parsed, dict) else None
+        if isinstance(data, dict):
+            conversation_id = data.get("conversation_id")
+            message_id = data.get("message_id")
+    except json.JSONDecodeError:
+        parsed = None
+    if not outcome.get("ok"):
+        return {"ok": False, "error": outcome.get("response") or "send_failed"}
+    return {
+        "ok": True,
+        "conversation_id": conversation_id,
+        "message_id": message_id,
+        "phone": phone,
+    }

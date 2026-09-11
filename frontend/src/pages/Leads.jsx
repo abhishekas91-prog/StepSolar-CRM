@@ -4,6 +4,7 @@ import { useStore, store } from '../lib/store';
 import { SOURCES, STATES, CITIES, ROOF_TYPES, PROPERTY_TYPES, TIMELINES, PIPELINE, PIPELINE_MAP, leadCsv } from '../lib/backend';
 import { formatDate, relativeDue } from '../lib/format';
 import { Card, Icon, Modal, Badge, StageBadge, Avatar, useToast } from '../components/ui';
+import WhatsAppChat from '../components/WhatsAppChat';
 
 export default function Leads() {
   const state = useStore();
@@ -16,6 +17,7 @@ export default function Leads() {
   const [newLead, setNewLead] = useState(false);
   const [draft, setDraft] = useState({});
   const [busy, setBusy] = useState(false);
+  const [waLead, setWaLead] = useState(null);
 
   const filtered = useMemo(() => {
     let list = [...state.leads];
@@ -188,7 +190,7 @@ export default function Leads() {
                       <td>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }} onClick={(e) => e.stopPropagation()}>
                           <ActionBtn title="Call" tone="sky" icon="phone" onClick={() => { window.location.href = `tel:${l.phone}`; }} />
-                          <ActionBtn title="WhatsApp" tone="green" icon="whatsapp" onClick={() => { window.open(`https://wa.me/91${l.phone}`, '_blank'); }} />
+                          <ActionBtn title="WhatsApp" tone="green" icon="whatsapp" onClick={() => setWaLead(l)} />
                           <ActionBtn title="Open" tone="slate" icon="dots" onClick={() => navigate(`/leads/${l.id}`)} />
                         </div>
                       </td>
@@ -200,7 +202,7 @@ export default function Leads() {
           </div>
         </Card>
       ) : (
-        <KanbanView byStage={byStage} navigate={navigate} />
+        <KanbanView byStage={byStage} navigate={navigate} onWhatsApp={setWaLead} />
       )}
 
       <Modal
@@ -218,6 +220,7 @@ export default function Leads() {
       >
         <NewLeadForm draft={draft} setDraft={setDraft} />
       </Modal>
+      <WhatsAppChat lead={waLead} open={Boolean(waLead)} onClose={() => setWaLead(null)} />
     </div>
   );
 }
@@ -239,7 +242,7 @@ function ActionBtn({ title, icon, tone, onClick }) {
   );
 }
 
-function KanbanView({ byStage, navigate }) {
+function KanbanView({ byStage, navigate, onWhatsApp }) {
   return (
     <div className="kanban">
       {PIPELINE.map((s) => (
@@ -267,7 +270,7 @@ function KanbanView({ byStage, navigate }) {
                   <button className="btn btn-sm btn-primary" style={{ flex: 1, padding: '4px 8px', fontSize: 11.5 }} onClick={(e) => { e.stopPropagation(); window.location.href = `tel:${l.phone}`; }}>
                     <Icon name="phone" size={12} /> Call
                   </button>
-                  <button className="btn btn-sm btn-whatsapp" style={{ flex: 1, padding: '4px 8px', fontSize: 11.5 }} onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/91${l.phone}`, '_blank'); }}>
+                  <button className="btn btn-sm btn-whatsapp" style={{ flex: 1, padding: '4px 8px', fontSize: 11.5 }} onClick={(e) => { e.stopPropagation(); onWhatsApp(l); }}>
                     <Icon name="whatsapp" size={12} /> WhatsApp
                   </button>
                 </div>

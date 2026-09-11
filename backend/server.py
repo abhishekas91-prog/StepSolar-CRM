@@ -61,8 +61,10 @@ from services.whatsapp_service import (
     WHATSAPP_EVENTS,
     base_url,
     effective_config,
+    fetch_chat_thread,
     notify_stage_event,
     retry_failed_messages,
+    send_chat_text,
     send_whatsapp,
     set_runtime_config,
     whatsapp_enabled,
@@ -1853,6 +1855,8 @@ class WhatsAppConfigUpdate(BaseModel):
     timeout_seconds: Optional[int] = Field(default=None, ge=1, le=300)
     payload_template: Optional[str] = Field(default=None, max_length=50_000)
     base_url: Optional[str] = Field(default=None, max_length=1000)
+    wacrm_base_url: Optional[str] = Field(default=None, max_length=1000)
+    wacrm_api_key: Optional[str] = Field(default=None, max_length=2000)
 
 
 class WhatsAppTestSend(BaseModel):
@@ -1864,6 +1868,11 @@ class WhatsAppDocumentSend(BaseModel):
     document_type: Optional[str] = Field(default="document", max_length=40)
     document_no: Optional[str] = Field(default="", max_length=80)
     message: Optional[str] = Field(default=None, max_length=2000)
+
+
+class WhatsAppChatSend(BaseModel):
+    text: str = Field(..., min_length=1, max_length=4000)
+    phone: Optional[str] = Field(default=None, max_length=20)
 
 
 _SUBSIDY_STATUSES = {"Not Applied", "Applied", "Approved", "Disbursed", "Rejected"}
@@ -2134,6 +2143,80 @@ async def crm_whatsapp_document(
     return {"ok": out.get("ok", False), "status": out.get("status"), "log_id": out.get("log_id"), "error": out.get("error")}
 
 
+def _chat_thread_payload(out: Dict[str, Any], phone: str = "") -> Dict[str, Any]:
+    return {
+        "ok": out.get("ok", False),
+        "enabled": out.get("enabled", False),
+        "phone": out.get("phone") or phone or "",
+        "conversation_id": out.get("conversation_id"),
+        "contact_id": out.get("contact_id"),
+        "messages": out.get("messages") or [],
+        "error": out.get("error"),
+    }
+
+
+@crm.get("/whatsapp/chat")
+async def crm_whatsapp_chat(
+    phone: str = Query(..., min_length=8, max_length=20),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Load conversation history for a customer phone from WaCrmStepSolar_Live."""
+    out = await fetch_chat_thread({"phone": phone})
+    return _chat_thread_payload(out, phone)
+
+
+@crm.post("/whatsapp/chat")
+async def crm_whatsapp_chat_send(
+    payload: WhatsAppChatSend,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Send a WhatsApp text via WaCrmStepSolar_Live public API."""
+    phone = (payload.phone or "").strip()
+    if len(phone) < 8:
+        raise HTTPException(status_code=400, detail="phone is required")
+    lead = {"phone": phone}
+    out = await send_chat_text(lead, payload.text)
+    return {
+        "ok": out.get("ok", False),
+        "conversation_id": out.get("conversation_id"),
+        "message_id": out.get("message_id"),
+        "error": out.get("error"),
+    }
+
+
+@crm.get("/leads/{lead_id}/whatsapp/thread")
+async def crm_whatsapp_thread(
+    lead_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Live WaCRM inbox for this lead — alias of GET /whatsapp/chat?phone=."""
+    lead = await _get_lead_or_404(lead_id)
+    out = await fetch_chat_thread(lead)
+    return _chat_thread_payload(out, lead.get("phone") or "")
+
+
+@crm.post("/leads/{lead_id}/whatsapp/chat")
+async def crm_whatsapp_lead_chat(
+    lead_id: str,
+    payload: WhatsAppChatSend,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Send a free-form WhatsApp text via WaCRM (same thread as the CRM popup)."""
+    lead = await _get_lead_or_404(lead_id)
+    out = await send_chat_text(lead, payload.text)
+    if out.get("ok"):
+        preview = (payload.text or "").strip().replace("\n", " ")
+        if len(preview) > 80:
+            preview = preview[:77] + "…"
+        await _push_activity(lead_id, user, "whatsapp.chat", f"WhatsApp: {preview}")
+    return {
+        "ok": out.get("ok", False),
+        "conversation_id": out.get("conversation_id"),
+        "message_id": out.get("message_id"),
+        "error": out.get("error"),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # WhatsApp provider settings (Admin) — DB-backed, overrides env at send time
 # --------------------------------------------------------------------------- #
@@ -2160,11 +2243,14 @@ async def _save_whatsapp_settings(config: Dict[str, Any], user: CurrentUser) -> 
 
 
 def _db_config_view(cfg: Dict[str, Any]) -> Dict[str, Any]:
-    """Stored config as exposed to the UI — api_key never leaves the server."""
+    """Stored config as exposed to the UI — secrets never leave the server."""
     view = {k: v for k, v in cfg.items() if v is not None}
     key = str(view.get("api_key") or "")
     view["api_key_set"] = bool(key)
     view.pop("api_key", None)
+    wa_key = str(view.get("wacrm_api_key") or "")
+    view["wacrm_api_key_set"] = bool(wa_key)
+    view.pop("wacrm_api_key", None)
     return view
 
 
@@ -2208,14 +2294,15 @@ async def crm_whatsapp_config_update(
 
     db_cfg = (await _load_whatsapp_settings()) or {}
 
-    # api_key: masked placeholder → keep existing; empty string → clear;
+    # Secrets: masked placeholder → keep existing; empty string → clear;
     # otherwise store the new key.
-    if "api_key" in data:
-        new_key = str(data["api_key"] or "").strip()
-        if new_key and "•" in new_key:
-            data.pop("api_key", None)
-        else:
-            data["api_key"] = new_key
+    for secret_field in ("api_key", "wacrm_api_key"):
+        if secret_field in data:
+            new_key = str(data[secret_field] or "").strip()
+            if new_key and "•" in new_key:
+                data.pop(secret_field, None)
+            else:
+                data[secret_field] = new_key
 
     merged = {**db_cfg, **{k: v for k, v in data.items() if v is not None}}
     await _save_whatsapp_settings(merged, user)

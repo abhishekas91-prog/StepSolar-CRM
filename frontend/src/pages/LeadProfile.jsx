@@ -4,8 +4,9 @@ import { useStore, store } from '../lib/store';
 import { formatDate, formatINR, formatDateTime, timeAgo } from '../lib/format';
 import { Card, Icon, StageBadge, Avatar, Modal, Badge, useToast } from '../components/ui';
 import { PIPELINE_MAP, STAGE_STATUS, invoiceOutstanding } from '../lib/backend';
-import { getToken } from '../lib/api';
+import { api, getToken } from '../lib/api';
 import DocumentPreview from '../components/DocumentPreview';
+import WhatsAppChat from '../components/WhatsAppChat';
 import {
   COMPANY,
   COMMERCIAL_ITEMS,
@@ -71,6 +72,7 @@ export default function LeadProfile() {
 function Header({ lead, toast }) {
   const state = useStore();
   const [assignOpen, setAssignOpen] = useState(false);
+  const [waOpen, setWaOpen] = useState(false);
   const [assignee, setAssignee] = useState(lead.assignedTo || '');
 
   async function assign() {
@@ -116,7 +118,7 @@ function Header({ lead, toast }) {
 
       <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap', borderTop: '1px solid var(--slate-100)', paddingTop: 16 }}>
         <button className="btn btn-outline btn-sm" onClick={() => { window.location.href = `tel:${lead.phone}`; }}><Icon name="phone" size={14} /> Call</button>
-        <button className="btn btn-whatsapp btn-sm" onClick={() => { window.open(`https://wa.me/91${lead.phone}`, '_blank'); }}><Icon name="whatsapp" size={14} /> WhatsApp</button>
+        <button className="btn btn-whatsapp btn-sm" onClick={() => setWaOpen(true)}><Icon name="whatsapp" size={14} /> WhatsApp</button>
         {trackUrl && <a className="btn btn-outline btn-sm" href={trackUrl} target="_blank" rel="noreferrer"><Icon name="link" size={14} /> Tracking Portal</a>}
         <button className="btn btn-outline btn-sm" onClick={() => setAssignOpen(true)}><Icon name="users" size={14} /> Assign</button>
         <div style={{ flex: 1 }} />
@@ -149,6 +151,7 @@ function Header({ lead, toast }) {
           </select>
         </div>
       </Modal>
+      <WhatsAppChat lead={lead} open={waOpen} onClose={() => setWaOpen(false)} />
     </Card>
   );
 }
@@ -391,6 +394,23 @@ function SolarModal({ lead, open, onClose, toast }) {
   );
 }
 
+async function sendLeadWhatsApp(lead, toast, { document_type, document_no }) {
+  try {
+    const out = await api.sendWhatsAppDoc(lead.id, { document_type, document_no });
+    if (out?.ok === false && out?.error === 'whatsapp_disabled') {
+      toast('WhatsApp Business API CRM mein configure nahi hai', 'error');
+      return;
+    }
+    if (out?.ok === false) {
+      toast(out?.error || 'WhatsApp send fail', 'error');
+      return;
+    }
+    toast('WhatsApp Business API se bhej diya');
+  } catch (e) {
+    toast(e.message || 'WhatsApp send fail', 'error');
+  }
+}
+
 function QuotationTab({ lead, toast }) {
   const [editOpen, setEditOpen] = useState(false);
   const [preview, setPreview] = useState(false);
@@ -481,7 +501,8 @@ function QuotationTab({ lead, toast }) {
             <dt>Capacity</dt><dd>{lead.capacity ? lead.capacity + ' kW' : '—'}</dd>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
-            {q.status !== 'Sent' && <button className="btn btn-sm btn-whatsapp" onClick={() => setStatus('Sent')}><Icon name="send" size={13} /> Mark Sent</button>}
+            <button className="btn btn-sm btn-whatsapp" onClick={() => sendLeadWhatsApp(lead, toast, { document_type: 'quotation', document_no: q.number || q.docNo || '' })}><Icon name="whatsapp" size={13} /> Send by WhatsApp</button>
+            {q.status !== 'Sent' && <button className="btn btn-sm btn-outline" onClick={() => setStatus('Sent')}><Icon name="send" size={13} /> Mark Sent</button>}
             {q.status !== 'Approved' && <button className="btn btn-sm btn-primary" onClick={() => setStatus('Approved')}><Icon name="check" size={13} /> Approve</button>}
             {q.status !== 'Rejected' && <button className="btn btn-sm btn-danger" onClick={() => setStatus('Rejected')}><Icon name="x" size={13} /> Reject</button>}
           </div>
@@ -748,7 +769,12 @@ function InvoiceTab({ lead, toast }) {
   return (
     <div className="grid-2" style={{ gridTemplateColumns: '1.6fr 1fr' }}>
       <Card title={`Invoice ${inv.number}`} pad={false} subtitle={`Based on quotation rev. ${inv.basedOnQuotationRevision || '—'}`}
-        action={<button className="btn btn-outline btn-sm" onClick={() => setPreview(true)}><Icon name="file" size={13} /> Preview / Print</button>}>
+        action={
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-whatsapp btn-sm" onClick={() => sendLeadWhatsApp(lead, toast, { document_type: 'invoice', document_no: inv.number || '' })}><Icon name="whatsapp" size={13} /> Send by WhatsApp</button>
+            <button className="btn btn-outline btn-sm" onClick={() => setPreview(true)}><Icon name="file" size={13} /> Preview / Print</button>
+          </div>
+        }>
         <div className="table-wrap">
           <table className="data">
             <thead><tr><th>Description</th><th>HSN/SAC</th><th>Qty</th><th>Unit</th><th>Price</th><th>GST %</th><th style={{ textAlign: 'right' }}>Amount</th></tr></thead>

@@ -16,6 +16,7 @@ import Projects from './pages/Projects';
 import Subsidies from './pages/Subsidies';
 import Billing from './pages/Billing';
 import ServiceDesk from './pages/ServiceDesk';
+import WhatsAppSettings from './pages/WhatsAppSettings';
 
 function Boot() {
   useEffect(() => {
@@ -52,6 +53,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             <Route path="/subsidies" element={<Subsidies />} />
             <Route path="/billing" element={<Billing />} />
             <Route path="/service" element={<ServiceDesk />} />
+            <Route path="/master-config" element={<WhatsAppSettings />} />
+            <Route path="/whatsapp" element={<Navigate to="/master-config" replace />} />
           </Route>
         </Routes>
       </ToastProvider>

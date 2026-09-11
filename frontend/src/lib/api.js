@@ -107,6 +107,14 @@ export const api = {
   inventory: () => request('/crm/inventory'),
   whatsappLogs: () => request('/crm/whatsapp/logs'),
   whatsappConfig: () => request('/crm/whatsapp/config'),
+  saveWhatsappConfig: (data) => request('/crm/whatsapp/config', { method: 'PUT', body: data }),
+  whatsappTestSend: (data) => request('/crm/whatsapp/test-send', { method: 'POST', body: data }),
+  sendWhatsAppDoc: (id, data) =>
+    request(`/crm/leads/${id}/whatsapp/document`, { method: 'POST', body: data }),
+  whatsappThread: (phone) =>
+    request(`/crm/whatsapp/chat?phone=${encodeURIComponent(phone)}`),
+  whatsappChat: (data) =>
+    request('/crm/whatsapp/chat', { method: 'POST', body: data }),
   adminUsers: () => request('/admin/users'),
 
   uploadDoc: (id, stageKey, file) => {
