@@ -11,6 +11,26 @@ function isOutbound(m) {
   return (m?.direction || '').toLowerCase() === 'outbound';
 }
 
+function sameThread(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if ((a[i].id || '') !== (b[i].id || '')) return false;
+    if (messageText(a[i]) !== messageText(b[i])) return false;
+    if ((a[i].status || '') !== (b[i].status || '')) return false;
+  }
+  return true;
+}
+
+function mergeMessages(prev, next) {
+  if (sameThread(prev, next)) return prev;
+  const pending = prev.filter((m) => (
+    !m.id
+    && isOutbound(m)
+    && !next.some((n) => isOutbound(n) && messageText(n) === messageText(m))
+  ));
+  return pending.length ? [...next, ...pending] : next;
+}
+
 export default function WhatsAppChat({ open, onClose, lead }) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
@@ -19,31 +39,61 @@ export default function WhatsAppChat({ open, onClose, lead }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
+  const threadRef = useRef(null);
+  const stickRef = useRef(true);
 
   useEffect(() => {
-    if (!open || !lead?.phone) return;
+    if (!open || !lead?.phone) {
+      setMessages([]);
+      return undefined;
+    }
     let cancelled = false;
+    let first = true;
     setLoading(true);
     setError('');
-    api.whatsappChat(lead.phone)
-      .then((res) => {
+
+    async function load() {
+      try {
+        const res = await api.whatsappChat(lead.phone);
         if (cancelled) return;
-        setMessages(res.messages || []);
-      })
-      .catch((e) => {
+        setMessages((prev) => mergeMessages(prev, res.messages || []));
+        setError('');
+      } catch (e) {
         if (cancelled) return;
-        setError(e.message);
-        setMessages([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
+        if (first) {
+          setError(e.message);
+          setMessages([]);
+        }
+      } finally {
+        if (!cancelled && first) {
+          first = false;
+          setLoading(false);
+        }
+      }
+    }
+
+    load();
+    const timer = setInterval(load, 3000);
+    function onVis() {
+      if (document.visibilityState === 'visible') load();
+    }
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [open, lead?.phone]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (open && stickRef.current) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, open]);
+
+  function onThreadScroll() {
+    const el = threadRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function send() {
     const body = text.trim();
@@ -51,6 +101,7 @@ export default function WhatsAppChat({ open, onClose, lead }) {
     setSending(true);
     try {
       await api.whatsappChatSend({ phone: lead.phone, text: body });
+      stickRef.current = true;
       setMessages((prev) => [
         ...prev,
         { direction: 'outbound', content_text: body, created_at: new Date().toISOString(), status: 'sent' },
@@ -69,7 +120,7 @@ export default function WhatsAppChat({ open, onClose, lead }) {
         <div style={{ fontSize: 12, color: 'var(--slate-500)', marginBottom: 12 }}>
           {lead?.phone} · via WaCRM Business API
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', background: '#efeae2', borderRadius: 10, padding: 12, minHeight: 280 }}>
+        <div ref={threadRef} onScroll={onThreadScroll} style={{ flex: 1, overflowY: 'auto', background: '#efeae2', borderRadius: 10, padding: 12, minHeight: 280 }}>
           {loading && <div className="empty-state" style={{ padding: 24 }}><strong>Loading chat…</strong></div>}
           {!loading && error && (
             <div className="empty-state" style={{ padding: 24 }}>
