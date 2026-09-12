@@ -1,19 +1,54 @@
-import { useMemo } from 'react';
-import { Modal } from './ui';
+import { useEffect, useMemo, useState } from 'react';
+import { Modal, Icon } from './ui';
 import { DOC_PRINT_CSS, printRecord, renderDocHtml } from '../lib/documents';
+import { api } from '../lib/api';
 
-export default function DocumentPreview({ open, onClose, record, title }) {
+export default function DocumentPreview({ open, onClose, record, title, leadId, documentType, documentNo, paymentId }) {
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
   const html = useMemo(() => {
     if (!record) return '';
     return renderDocHtml(record).html;
   }, [record]);
 
+  useEffect(() => {
+    setSending(false);
+    setSent(false);
+    setError('');
+  }, [open, record, leadId, documentNo]);
+
   if (!open || !record) return null;
+
+  async function sendWhatsApp() {
+    if (!leadId || sending) return;
+    setSending(true);
+    setError('');
+    try {
+      const out = await api.sendWhatsappDocument(leadId, {
+        document_type: documentType || record.mode || 'document',
+        document_no: documentNo || record.docNo || '',
+        payment_id: paymentId || undefined,
+      });
+      if (!out.ok) throw new Error(out.error || 'Send failed');
+      setSent(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
     <Modal open onClose={onClose} title={title || 'Document Preview'} wide footer={
       <>
+        {error && <span style={{ fontSize: 12, color: 'var(--crimson-600)', marginRight: 'auto' }}>{error}</span>}
         <button className="btn btn-outline" onClick={onClose}>Close</button>
+        {leadId && (
+          <button className="btn btn-whatsapp" onClick={sendWhatsApp} disabled={sending || sent}>
+            <Icon name="whatsapp" size={14} /> {sent ? 'Sent' : sending ? 'Sending…' : 'Send via WhatsApp'}
+          </button>
+        )}
         <button className="btn btn-primary" onClick={() => printRecord(record)}>Print / PDF</button>
       </>
     }>

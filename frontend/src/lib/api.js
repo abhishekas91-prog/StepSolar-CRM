@@ -85,6 +85,13 @@ export const api = {
   leads: (limit = 2000) => request(`/crm/leads?limit=${limit}`),
   getLead: (id) => request(`/crm/leads/${id}`),
   createLead: (data) => request('/crm/leads', { method: 'POST', body: data }),
+  importLeads: (file, { dryRun = false, skipDuplicates = true } = {}) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('dry_run', dryRun ? 'true' : 'false');
+    fd.append('skip_duplicates', skipDuplicates ? 'true' : 'false');
+    return request('/crm/leads/import', { method: 'POST', formData: fd });
+  },
   updateLead: (id, patch) => request(`/crm/leads/${id}`, { method: 'PATCH', body: patch }),
   deleteLead: (id) => request(`/crm/leads/${id}`, { method: 'DELETE' }),
 
@@ -107,7 +114,14 @@ export const api = {
   inventory: () => request('/crm/inventory'),
   whatsappLogs: () => request('/crm/whatsapp/logs'),
   whatsappConfig: () => request('/crm/whatsapp/config'),
+  saveWhatsappConfig: (data) => request('/crm/whatsapp/config', { method: 'PUT', body: data }),
+  whatsappTestSend: (data) => request('/crm/whatsapp/test-send', { method: 'POST', body: data }),
+  whatsappChat: (phone) => request(`/crm/whatsapp/chat?phone=${encodeURIComponent(phone)}`),
+  whatsappChatSend: (data) => request('/crm/whatsapp/chat', { method: 'POST', body: data }),
+  sendWhatsappDocument: (leadId, data) => request(`/crm/leads/${leadId}/whatsapp/document`, { method: 'POST', body: data }),
   adminUsers: () => request('/admin/users'),
+  createAdminUser: (data) => request('/admin/users', { method: 'POST', body: data }),
+  patchAdminUser: (id, data) => request(`/admin/users/${id}`, { method: 'PATCH', body: data }),
 
   uploadDoc: (id, stageKey, file) => {
     const fd = new FormData();

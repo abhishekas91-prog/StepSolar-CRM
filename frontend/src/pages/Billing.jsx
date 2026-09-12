@@ -5,6 +5,7 @@ import { Card, Icon, Badge, Modal, Drawer, useToast } from '../components/ui';
 import { formatINR, formatDate, timeAgo } from '../lib/format';
 import { invoiceOutstanding } from '../lib/backend';
 import DocumentPreview from '../components/DocumentPreview';
+import { api } from '../lib/api';
 import { invoiceRecord, itemPrice, receiptRecord } from '../lib/documents';
 
 const STATUS_TONE = { Paid: 'green', Partial: 'amber', Due: 'crimson' };
@@ -112,6 +113,16 @@ export default function Billing() {
                       <td><Badge tone={STATUS_TONE[st]}>{st}</Badge></td>
                       <td style={{ textAlign: 'right' }}>
                         <button className="btn btn-sm btn-outline" onClick={(e) => { e.stopPropagation(); setPreview(l); }}><Icon name="file" size={13} /> Print</button>
+                        <button className="btn btn-sm btn-whatsapp" onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            const out = await api.sendWhatsappDocument(l.id, { document_type: 'invoice', document_no: inv.number });
+                            if (!out.ok) throw new Error(out.error || 'Send failed');
+                            toast('Invoice sent via WhatsApp');
+                          } catch (err) {
+                            toast(err.message, 'error');
+                          }
+                        }}><Icon name="whatsapp" size={13} /> WhatsApp</button>
                         <button className="btn btn-sm btn-outline" onClick={(e) => { e.stopPropagation(); setDetails(l); }}><Icon name="chev" size={13} /> Details</button>
                       </td>
                     </tr>
@@ -135,6 +146,15 @@ export default function Billing() {
                 <div style={{ fontSize: 11.5, color: 'var(--slate-500)' }}>{lead.name} · {lead.code} · {timeAgo(p.at)}</div>
               </div>
               <button className="btn btn-sm btn-outline" onClick={() => setReceiptPreview({ lead, p })}>Receipt</button>
+              <button className="btn btn-sm btn-whatsapp" onClick={async () => {
+                try {
+                  const out = await api.sendWhatsappDocument(lead.id, { document_type: 'receipt', document_no: p.receiptNo, payment_id: p.id });
+                  if (!out.ok) throw new Error(out.error || 'Send failed');
+                  toast('Receipt sent via WhatsApp');
+                } catch (err) {
+                  toast(err.message, 'error');
+                }
+              }}><Icon name="whatsapp" size={13} /> WhatsApp</button>
               <button className="btn btn-sm btn-outline" onClick={() => navigate(`/leads/${lead.id}`)}>View</button>
             </div>
           ))}
@@ -229,6 +249,17 @@ export default function Billing() {
               <button className="btn btn-outline" style={{ width: '100%', marginTop: 16 }} onClick={() => setPreview(details)}>
                 <Icon name="file" size={14} /> Preview / Print Invoice
               </button>
+              <button className="btn btn-whatsapp" style={{ width: '100%', marginTop: 10 }} onClick={async () => {
+                try {
+                  const out = await api.sendWhatsappDocument(details.id, { document_type: 'invoice', document_no: inv.number });
+                  if (!out.ok) throw new Error(out.error || 'Send failed');
+                  toast('Invoice sent via WhatsApp');
+                } catch (err) {
+                  toast(err.message, 'error');
+                }
+              }}>
+                <Icon name="whatsapp" size={14} /> Send via WhatsApp
+              </button>
               {o > 0 && (
                 <button className="btn btn-primary" style={{ width: '100%', marginTop: 10 }} onClick={() => { setDetails(null); navigate(`/leads/${details.id}`); }}>
                   <Icon name="plus" size={14} /> Record Payment on Lead
@@ -238,8 +269,8 @@ export default function Billing() {
           );
         })()}
       </Drawer>
-      <DocumentPreview open={Boolean(preview)} onClose={() => setPreview(null)} record={preview ? invoiceRecord(preview) : null} title={`Invoice ${preview?.invoice?.number || ''}`} />
-      <DocumentPreview open={Boolean(receiptPreview)} onClose={() => setReceiptPreview(null)} record={receiptPreview ? receiptRecord(receiptPreview.lead, receiptPreview.p) : null} title={`Receipt ${receiptPreview?.p?.receiptNo || ''}`} />
+      <DocumentPreview open={Boolean(preview)} onClose={() => setPreview(null)} record={preview ? invoiceRecord(preview) : null} title={`Invoice ${preview?.invoice?.number || ''}`} leadId={preview?.id} documentType="invoice" documentNo={preview?.invoice?.number} />
+      <DocumentPreview open={Boolean(receiptPreview)} onClose={() => setReceiptPreview(null)} record={receiptPreview ? receiptRecord(receiptPreview.lead, receiptPreview.p) : null} title={`Receipt ${receiptPreview?.p?.receiptNo || ''}`} leadId={receiptPreview?.lead?.id} documentType="receipt" documentNo={receiptPreview?.p?.receiptNo} paymentId={receiptPreview?.p?.id} />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Icon, Avatar, useToast } from './ui';
 import { useEffect, useMemo } from 'react';
 import { useStore, logout } from '../lib/store';
+import { isSuperAdmin } from '../lib/auth';
 
 const NAV = [
   { group: 'Overview', items: [{ to: '/', label: 'Dashboard', icon: 'dashboard', end: true }] },
@@ -38,6 +39,7 @@ const TITLES = {
   '/subsidies': { title: 'Subsidy & DISCOM Desk', sub: 'Regulatory compliance pipeline' },
   '/billing': { title: 'Billing & Receivables', sub: 'Milestone invoices & payment logging' },
   '/service': { title: 'After-Sales & Field Desk', sub: 'Open tasks, dispatch & maintenance' },
+  '/master-config': { title: 'Master Config', sub: 'WhatsApp Business API & agent accounts' },
 };
 
 export default function Shell() {
@@ -70,7 +72,7 @@ export default function Shell() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-logo">
-            <Icon name="sun" size={20} />
+            <img src="/step-solar-logo.png" alt="Step Solar" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
           <div>
             <h1>Step Solar</h1>
@@ -92,6 +94,15 @@ export default function Shell() {
               ))}
             </div>
           ))}
+          {isSuperAdmin(user) && (
+            <div>
+              <div className="nav-group-label">Admin</div>
+              <NavLink to="/master-config" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                <Icon name="wrench" size={17} />
+                Master Config
+              </NavLink>
+            </div>
+          )}
         </nav>
 
         <div style={{ padding: 16, borderTop: '1px solid rgba(255,255,255,0.08)' }}>

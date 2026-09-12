@@ -1,5 +1,6 @@
 fastapi==0.110.1
 uvicorn[standard]==0.25.0
+python-multipart==0.0.9
 pydantic==2.13.4
 email-validator==2.3.0
 motor==3.3.1
@@ -12,3 +13,4 @@ python-dotenv==1.2.2
 gspread==6.1.4
 google-auth==2.55.2
 httpx==0.28.1
+fpdf2==2.8.4

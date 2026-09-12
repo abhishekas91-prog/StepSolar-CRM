@@ -4,8 +4,9 @@ import { useStore, store } from '../lib/store';
 import { formatDate, formatINR, formatDateTime, timeAgo } from '../lib/format';
 import { Card, Icon, StageBadge, Avatar, Modal, Badge, useToast } from '../components/ui';
 import { PIPELINE_MAP, STAGE_STATUS, invoiceOutstanding } from '../lib/backend';
-import { getToken } from '../lib/api';
+import { api, getToken } from '../lib/api';
 import DocumentPreview from '../components/DocumentPreview';
+import WhatsAppChat from '../components/WhatsAppChat';
 import {
   COMPANY,
   COMMERCIAL_ITEMS,
@@ -19,8 +20,8 @@ import {
   receiptRecord,
 } from '../lib/documents';
 
-const TABS = ['Pipeline', 'Overview', 'Quotation', 'Invoice', 'Tasks', 'Comments', 'Activity', 'Documents'];
-const ACT_ICON = { 'lead.created': 'plus', 'stages.updated': 'refresh', 'quotation.updated': 'proposal', 'quotation.status': 'proposal', 'invoice.created': 'billing', 'payment.recorded': 'billing', 'payment.deleted': 'trash', 'task.created': 'check', 'task.updated': 'check', 'task.deleted': 'trash', 'comment.created': 'mail', 'survey.saved': 'survey', 'solar.saved': 'sun', 'document.uploaded': 'file', 'document.deleted': 'trash', 'assigned': 'users', 'lead.updated': 'edit' };
+const TABS = ['Pipeline', 'Overview', 'Field Updates', 'Quotation', 'Invoice', 'Tasks', 'Comments', 'Activity', 'Documents'];
+const ACT_ICON = { 'lead.created': 'plus', 'lead.imported': 'upload', 'stages.updated': 'refresh', 'quotation.updated': 'proposal', 'quotation.status': 'proposal', 'invoice.created': 'billing', 'payment.recorded': 'billing', 'payment.deleted': 'trash', 'task.created': 'check', 'task.updated': 'check', 'task.deleted': 'trash', 'comment.created': 'mail', 'survey.saved': 'survey', 'solar.saved': 'sun', 'document.uploaded': 'file', 'document.deleted': 'trash', 'assigned': 'users', 'lead.updated': 'edit' };
 
 const STATUS_COLOR = { Pending: 'slate', 'In Progress': 'amber', Completed: 'green' };
 
@@ -58,6 +59,7 @@ export default function LeadProfile() {
 
       {tab === 'Pipeline' && <PipelineTab lead={raw} toast={toast} />}
       {tab === 'Overview' && <OverviewTab lead={raw} toast={toast} />}
+      {tab === 'Field Updates' && <FieldUpdatesTab lead={raw} toast={toast} />}
       {tab === 'Quotation' && <QuotationTab lead={raw} toast={toast} />}
       {tab === 'Invoice' && <InvoiceTab lead={raw} toast={toast} />}
       {tab === 'Tasks' && <TasksTab lead={raw} toast={toast} />}
@@ -72,6 +74,7 @@ function Header({ lead, toast }) {
   const state = useStore();
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignee, setAssignee] = useState(lead.assignedTo || '');
+  const [chatOpen, setChatOpen] = useState(false);
 
   async function assign() {
     try {
@@ -116,7 +119,7 @@ function Header({ lead, toast }) {
 
       <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap', borderTop: '1px solid var(--slate-100)', paddingTop: 16 }}>
         <button className="btn btn-outline btn-sm" onClick={() => { window.location.href = `tel:${lead.phone}`; }}><Icon name="phone" size={14} /> Call</button>
-        <button className="btn btn-whatsapp btn-sm" onClick={() => { window.open(`https://wa.me/91${lead.phone}`, '_blank'); }}><Icon name="whatsapp" size={14} /> WhatsApp</button>
+        <button className="btn btn-whatsapp btn-sm" onClick={() => setChatOpen(true)}><Icon name="whatsapp" size={14} /> WhatsApp</button>
         {trackUrl && <a className="btn btn-outline btn-sm" href={trackUrl} target="_blank" rel="noreferrer"><Icon name="link" size={14} /> Tracking Portal</a>}
         <button className="btn btn-outline btn-sm" onClick={() => setAssignOpen(true)}><Icon name="users" size={14} /> Assign</button>
         <div style={{ flex: 1 }} />
@@ -149,6 +152,7 @@ function Header({ lead, toast }) {
           </select>
         </div>
       </Modal>
+      <WhatsAppChat open={chatOpen} onClose={() => setChatOpen(false)} lead={lead} />
     </Card>
   );
 }
@@ -200,6 +204,126 @@ function PipelineTab({ lead, toast }) {
   );
 }
 
+function mapsUrl(loc) {
+  if (!loc || loc.lat == null || loc.lng == null) return null;
+  return `https://www.google.com/maps?q=${loc.lat},${loc.lng}`;
+}
+
+function FieldUpdatesTab({ lead, toast }) {
+  const stages = lead.stages || [];
+  const withField = stages.filter((s) => s.location || s.notes || (s.documents || []).length);
+  const gpsCount = stages.filter((s) => s.location && s.location.lat != null).length;
+  const notesCount = stages.filter((s) => (s.notes || '').trim()).length;
+  const photoCount = stages.reduce((n, s) => n + (s.documents || []).length, 0);
+
+  return (
+    <>
+      <div className="grid-3" style={{ marginBottom: 18 }}>
+        <Card>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--slate-400)' }}>GPS pins</div>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{gpsCount}</div>
+          <div style={{ fontSize: 12, color: 'var(--slate-500)' }}>from field app</div>
+        </Card>
+        <Card>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--slate-400)' }}>Field notes</div>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{notesCount}</div>
+          <div style={{ fontSize: 12, color: 'var(--slate-500)' }}>stages with notes</div>
+        </Card>
+        <Card>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--slate-400)' }}>Proof photos</div>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{photoCount}</div>
+          <div style={{ fontSize: 12, color: 'var(--slate-500)' }}>uploaded from field</div>
+        </Card>
+      </div>
+
+      <Card title="Field Updates by Stage" subtitle="GPS, notes and proof photos captured by Sales / Ops on the field app">
+        {withField.length === 0 ? (
+          <div className="empty-state">
+            <strong>No field updates yet</strong>
+            <div>When a field agent pins GPS, writes notes or uploads a photo, it will show here.</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {stages.map((s) => {
+              const loc = s.location;
+              const docs = s.documents || [];
+              const hasLoc = loc && loc.lat != null && loc.lng != null;
+              const hasNotes = Boolean((s.notes || '').trim());
+              if (!hasLoc && !hasNotes && !docs.length) return null;
+              const url = mapsUrl(loc);
+              const captured = loc?.capturedAt || s.updatedAt;
+              return (
+                <div key={s.key} className="card" style={{ padding: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+                    <Badge tone={STATUS_COLOR[s.status] || 'slate'}>{s.label}</Badge>
+                    <span style={{ fontSize: 12, color: 'var(--slate-500)' }}>{s.owner}</span>
+                    {captured && (
+                      <span style={{ fontSize: 11.5, color: 'var(--slate-400)', marginLeft: 'auto' }}>
+                        {formatDateTime(captured)}
+                      </span>
+                    )}
+                  </div>
+
+                  {hasLoc && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: hasNotes || docs.length ? 12 : 0 }}>
+                      <span className="icon-btn" style={{ borderColor: 'transparent', background: 'var(--sky-50)', color: 'var(--sky-500)' }}>
+                        <Icon name="loc" size={14} />
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>
+                          {Number(loc.lat).toFixed(6)}, {Number(loc.lng).toFixed(6)}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--slate-500)', marginTop: 2 }}>
+                          {loc.accuracy != null ? `Accuracy ±${Math.round(Number(loc.accuracy))} m` : 'GPS pin'}
+                          {loc.capturedAt ? ` · ${formatDateTime(loc.capturedAt)}` : ''}
+                        </div>
+                        {url && (
+                          <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 600, marginTop: 6, display: 'inline-block' }}>
+                            Open in Google Maps
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {hasNotes && (
+                    <div style={{ background: 'var(--slate-50)', border: '1px solid var(--slate-200)', borderRadius: 8, padding: 12, fontSize: 13, whiteSpace: 'pre-wrap', marginBottom: docs.length ? 12 : 0 }}>
+                      {s.notes}
+                    </div>
+                  )}
+
+                  {docs.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--slate-400)', marginBottom: 8 }}>
+                        {docs.length} proof photo{docs.length === 1 ? '' : 's'}
+                      </div>
+                      {docs.map((d) => (
+                        <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderTop: '1px solid var(--slate-100)' }}>
+                          <span className="icon-btn" style={{ borderColor: 'transparent', background: 'var(--sky-50)', color: 'var(--sky-500)' }}>
+                            <Icon name="camera" size={14} />
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>{d.name}</div>
+                            <div style={{ fontSize: 11.5, color: 'var(--slate-400)' }}>
+                              {Math.round((d.size || 0) / 1024)} KB · {formatDateTime(d.at)}
+                              {d.uploaded_by ? ` · ${d.uploaded_by}` : ''}
+                            </div>
+                          </div>
+                          <SendWhatsAppFile leadId={lead.id} docId={d.id} documentType="photo" documentNo={d.name} toast={toast} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </>
+  );
+}
+
 function OverviewTab({ lead, toast }) {
   const [surveyOpen, setSurveyOpen] = useState(false);
   const [solarOpen, setSolarOpen] = useState(false);
@@ -212,7 +336,7 @@ function OverviewTab({ lead, toast }) {
             <dt>Full Name</dt><dd>{lead.name}</dd>
             <dt>Phone</dt><dd>{lead.phone}</dd>
             <dt>Email</dt><dd>{lead.email}</dd>
-            <dt>Address</dt><dd>{[lead.city, lead.state, lead.pincode].filter(Boolean).join(', ')}</dd>
+            <dt>Address</dt><dd>{lead.address || [lead.city, lead.state, lead.pincode].filter(Boolean).join(', ') || '—'}</dd>
             <dt>Property Type</dt><dd>{lead.propertyType || '—'}</dd>
             <dt>Roof Type</dt><dd>{lead.roofType || '—'}</dd>
             <dt>Monthly Bill</dt><dd>{lead.monthlyBill ? formatINR(lead.monthlyBill) : '—'}</dd>
@@ -433,6 +557,7 @@ function QuotationTab({ lead, toast }) {
         action={
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-outline btn-sm" onClick={() => setPreview(true)}><Icon name="file" size={13} /> Preview / Print</button>
+            <SendWhatsAppFile leadId={lead.id} documentType={q.kind === 'commercial' ? 'commercial' : 'quotation'} documentNo={q.number || lead.code} toast={toast} />
             <button className="btn btn-outline btn-sm" onClick={() => setEditOpen(true)}><Icon name="edit" size={13} /> Edit Items</button>
           </div>
         }>
@@ -505,7 +630,7 @@ function QuotationTab({ lead, toast }) {
       </div>
 
       <QuoteEditor lead={lead} open={editOpen} onClose={() => setEditOpen(false)} toast={toast} />
-      <DocumentPreview open={preview} onClose={() => setPreview(false)} record={quotationRecord(lead)} title={`Quotation — ${lead.name}`} />
+      <DocumentPreview open={preview} onClose={() => setPreview(false)} record={quotationRecord(lead)} title={`Quotation — ${lead.name}`} leadId={lead.id} documentType={q.kind === 'commercial' ? 'commercial' : 'quotation'} documentNo={q.number || lead.code} />
     </div>
   );
 }
@@ -720,6 +845,7 @@ function InvoiceTab({ lead, toast }) {
   if (!inv) {
     return <Card title="Invoice" subtitle="No invoice generated for this lead"><div className="empty-state"><strong>No invoice yet</strong><div>Generate one from an approved quotation.</div></div></Card>;
   }
+  const payments = Array.isArray(inv.payments) ? inv.payments : [];
 
   async function record() {
     if (!pay.amount || Number(pay.amount) <= 0) {
@@ -748,7 +874,12 @@ function InvoiceTab({ lead, toast }) {
   return (
     <div className="grid-2" style={{ gridTemplateColumns: '1.6fr 1fr' }}>
       <Card title={`Invoice ${inv.number}`} pad={false} subtitle={`Based on quotation rev. ${inv.basedOnQuotationRevision || '—'}`}
-        action={<button className="btn btn-outline btn-sm" onClick={() => setPreview(true)}><Icon name="file" size={13} /> Preview / Print</button>}>
+        action={
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-outline btn-sm" onClick={() => setPreview(true)}><Icon name="file" size={13} /> Preview / Print</button>
+            <SendWhatsAppFile leadId={lead.id} documentType="invoice" documentNo={inv.number} toast={toast} />
+          </div>
+        }>
         <div className="table-wrap">
           <table className="data">
             <thead><tr><th>Description</th><th>HSN/SAC</th><th>Qty</th><th>Unit</th><th>Price</th><th>GST %</th><th style={{ textAlign: 'right' }}>Amount</th></tr></thead>
@@ -788,10 +919,10 @@ function InvoiceTab({ lead, toast }) {
         </Card>
 
         <Card title="Payment Ledger" pad={false}>
-          {inv.payments.length === 0 ? (
+          {payments.length === 0 ? (
             <div className="empty-state" style={{ padding: 16 }}><strong>No payments yet</strong></div>
           ) : (
-            inv.payments.map((p) => (
+            payments.map((p) => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', borderBottom: '1px solid var(--slate-100)' }}>
                 <span className="icon-btn" style={{ borderColor: 'transparent', background: 'var(--green-50)', color: 'var(--green-600)' }}><Icon name="check" size={14} /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -799,6 +930,7 @@ function InvoiceTab({ lead, toast }) {
                   <div className="cell-sub">{p.receiptNo} · {formatDateTime(p.at)} · {p.received_by}</div>
                 </div>
                 <button className="icon-btn" title="Print receipt" onClick={() => setReceiptPreview(p)}><Icon name="file" size={14} /></button>
+                <SendWhatsAppFile leadId={lead.id} documentType="receipt" documentNo={p.receiptNo} paymentId={p.id} toast={toast} compact />
                 <button className="icon-btn" title="Remove" onClick={() => removePayment(p.id)}><Icon name="trash" size={14} /></button>
               </div>
             ))
@@ -835,8 +967,8 @@ function InvoiceTab({ lead, toast }) {
           <div className="field"><label>Note</label><input className="input" value={pay.note} onChange={(e) => setPay({ ...pay, note: e.target.value })} /></div>
         </div>
       </Modal>
-      <DocumentPreview open={preview} onClose={() => setPreview(false)} record={invoiceRecord(lead)} title={`Invoice ${inv.number}`} />
-      <DocumentPreview open={Boolean(receiptPreview)} onClose={() => setReceiptPreview(null)} record={receiptPreview ? receiptRecord(lead, receiptPreview) : null} title={`Receipt ${receiptPreview?.receiptNo || ''}`} />
+      <DocumentPreview open={preview} onClose={() => setPreview(false)} record={invoiceRecord(lead)} title={`Invoice ${inv.number}`} leadId={lead.id} documentType="invoice" documentNo={inv.number} />
+      <DocumentPreview open={Boolean(receiptPreview)} onClose={() => setReceiptPreview(null)} record={receiptPreview ? receiptRecord(lead, receiptPreview) : null} title={`Receipt ${receiptPreview?.receiptNo || ''}`} leadId={lead.id} documentType="receipt" documentNo={receiptPreview?.receiptNo} paymentId={receiptPreview?.id} />
     </div>
   );
 }
@@ -1055,6 +1187,7 @@ function DocumentsTab({ lead, toast }) {
                     <div style={{ fontSize: 11.5, color: 'var(--slate-400)' }}>{Math.round((d.size || 0) / 1024)} KB · {formatDateTime(d.at)}</div>
                   </div>
                   <button className="icon-btn" onClick={() => download(s.key, d)}><Icon name="download" size={14} /></button>
+                  <SendWhatsAppFile leadId={lead.id} docId={d.id} documentType="file" documentNo={d.name} toast={toast} compact />
                   <button className="icon-btn" onClick={() => remove(s.key, d.id)}><Icon name="trash" size={14} /></button>
                 </div>
               ))}
@@ -1063,6 +1196,45 @@ function DocumentsTab({ lead, toast }) {
         })}
       </div>
     </Card>
+  );
+}
+
+function SendWhatsAppFile({ leadId, docId, documentType = 'document', documentNo = '', paymentId, toast, compact }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function send(e) {
+    e?.stopPropagation?.();
+    if (busy || done) return;
+    setBusy(true);
+    try {
+      const out = await api.sendWhatsappDocument(leadId, {
+        document_type: documentType,
+        document_no: documentNo || '',
+        doc_id: docId || undefined,
+        payment_id: paymentId || undefined,
+      });
+      if (!out.ok) throw new Error(out.error || 'Send failed');
+      setDone(true);
+      toast?.('Sent via WhatsApp');
+    } catch (err) {
+      toast?.(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (compact) {
+    return (
+      <button className="icon-btn" title={done ? 'Sent' : 'Send via WhatsApp'} onClick={send} disabled={busy || done} style={{ color: 'var(--green-600)' }}>
+        <Icon name="whatsapp" size={14} />
+      </button>
+    );
+  }
+  return (
+    <button className="btn btn-whatsapp btn-sm" onClick={send} disabled={busy || done}>
+      <Icon name="whatsapp" size={13} /> {done ? 'Sent' : busy ? 'Sending…' : 'Send via WhatsApp'}
+    </button>
   );
 }
 

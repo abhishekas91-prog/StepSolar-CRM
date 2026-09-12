@@ -12,10 +12,11 @@ CRM (valid JWT required for all /api/crm/*; stage edits are further
 restricted server-side to the stage's owner role, or Admin):
 - GET   /api/crm/leads        return every lead (full CRM shape)
 - POST  /api/crm/leads        add lead from CRM (auto-code, stages, source=Admin)
+- POST  /api/crm/leads/import bulk CSV (National Portal / PM Surya Ghar dump)
 - PATCH /api/crm/leads/{id}   partial update (any of: stages, quotation, invoice, contact fields)
 - GET   /api/crm/meta         return {nextLeadCode} for display
 
-Admin user management (Admin role only — /api/admin/*):
+Admin user management (super@stepsolar.in only — /api/admin/*):
 - GET   /api/admin/users              list all login users (no password hashes)
 - POST  /api/admin/users              create user with temp password (forces change on first login)
 - PATCH /api/admin/users/{id}         update full_name / role / active / reset_password
@@ -39,7 +40,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -50,6 +51,7 @@ from pymongo import ReturnDocument
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from starlette.middleware.cors import CORSMiddleware
 
+from csv_import import map_row, parse_csv_bytes, preview_rows
 from lead_service import (
     SHEET_HEADERS,
     append_lead_to_sheet,
@@ -57,10 +59,12 @@ from lead_service import (
     send_lead_email,
     sheets_enabled,
 )
+from services.pdf_docs import generate_document_pdf
 from services.whatsapp_service import (
     WHATSAPP_EVENTS,
     base_url,
     effective_config,
+    get_runtime_config,
     notify_stage_event,
     retry_failed_messages,
     send_whatsapp,
@@ -172,6 +176,7 @@ _WHATSAPP_STAGE_EVENTS: Dict[str, tuple] = {
 
 
 VALID_ROLES = {"Admin", "Sales", "Site Survey", "Installation", "Accounts"}
+SUPER_ADMIN_EMAIL = os.environ.get("SUPER_ADMIN_EMAIL", "super@stepsolar.in").strip().lower()
 
 
 async def _next_lead_code() -> str:
@@ -375,6 +380,16 @@ async def get_current_user(
 def require_admin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
     if user.role != "Admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
+    return user
+
+
+def _is_super_admin(user: CurrentUser) -> bool:
+    return (user.email or "").strip().lower() == SUPER_ADMIN_EMAIL
+
+
+def require_super_admin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    if not _is_super_admin(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super admin only")
     return user
 
 
@@ -682,6 +697,51 @@ async def create_lead(payload: LeadCreate, request: Request):
         sheet_synced=update_fields["sheet_synced"],
         email_sent=update_fields["email_sent"],
     )
+
+
+# --------------------------------------------------------------------------- #
+# Service-to-service: WhatsApp bot lead lookup
+#
+# Separate from the JWT-based CurrentUser auth used everywhere else — the
+# WA bot (WaCrmStepSolar_Live) has no human login, just a shared secret
+# in the X-Service-Key header. Set LEAD_LOOKUP_SERVICE_KEY in .env to a
+# random string and give the bot the same value. Leave it unset to keep
+# this endpoint disabled (every call 401s).
+# --------------------------------------------------------------------------- #
+LEAD_LOOKUP_SERVICE_KEY = os.environ.get("LEAD_LOOKUP_SERVICE_KEY", "")
+
+
+def _verify_service_key(x_service_key: Optional[str] = Header(default=None)):
+    if not LEAD_LOOKUP_SERVICE_KEY or x_service_key != LEAD_LOOKUP_SERVICE_KEY:
+        raise HTTPException(status_code=401, detail="invalid service key")
+
+
+@api.get("/leads/lookup")
+async def lookup_lead_by_phone(
+    phone: str = Query(..., min_length=10, max_length=10),
+    _: None = Depends(_verify_service_key),
+):
+    """Most-recent lead for this phone number, any age (unlike the
+    website form's `_is_duplicate`, which only looks back a few
+    minutes). Used by the WA bot to decide: start the lead-capture
+    flow, or reply with the existing lead's status."""
+    clean_phone = re.sub(r"\D", "", phone)
+    lead = await leads_collection.find_one(
+        {"phone": clean_phone},
+        {
+            "_id": 0,
+            "id": 1,
+            "code": 1,
+            "full_name": 1,
+            "stages": 1,
+            "assigned_name": 1,
+            "created_at": 1,
+        },
+        sort=[("created_at", -1)],
+    )
+    if not lead:
+        raise HTTPException(status_code=404, detail="no lead found")
+    return lead
 
 
 # --------------------------------------------------------------------------- #
@@ -994,6 +1054,162 @@ async def crm_create_lead(
     await leads_collection.insert_one(doc)
     await _notify_whatsapp(doc, "LEAD_CAPTURED")
     return _clean(doc)
+
+
+MAX_CSV_IMPORT_BYTES = 8 * 1024 * 1024
+MAX_CSV_IMPORT_ROWS = 2000
+
+
+def _form_flag(value: Optional[str], default: bool) -> bool:
+    if value is None or str(value).strip() == "":
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+@crm.post("/leads/import")
+async def crm_import_leads(
+    request: Request,
+    file: UploadFile = File(...),
+    dry_run: Optional[str] = Form(default="false"),
+    skip_duplicates: Optional[str] = Form(default="true"),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Bulk-create CRM leads from a National Portal / PM Surya Ghar CSV dump."""
+    if user.role not in {"Admin", "Sales"}:
+        raise HTTPException(status_code=403, detail="CSV import requires Admin or Sales")
+    dry_run = _form_flag(dry_run, False)
+    skip_duplicates = _form_flag(skip_duplicates, True)
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="CSV file is empty")
+    if len(raw) > MAX_CSV_IMPORT_BYTES:
+        raise HTTPException(status_code=400, detail="CSV file is larger than 8 MB")
+
+    _headers, records = parse_csv_bytes(raw)
+    if not records:
+        raise HTTPException(status_code=400, detail="CSV has a header but no data rows")
+    if len(records) > MAX_CSV_IMPORT_ROWS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"CSV has {len(records)} rows; max is {MAX_CSV_IMPORT_ROWS}",
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    created: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+    seen_phones: set = set()
+
+    if skip_duplicates:
+        existing = await leads_collection.find({}, {"_id": 0, "phone": 1}).to_list(length=20_000)
+        seen_phones.update(str(d.get("phone") or "") for d in existing if d.get("phone"))
+
+    for idx, row in enumerate(records, start=2):
+        mapped = map_row(row, now_iso=now_iso)
+        if not mapped.get("ok"):
+            errors.append({
+                "row": idx,
+                "name": (row.get("full_name") or "").strip(),
+                "phone": mapped.get("phone") or (row.get("phone") or "").strip(),
+                "error": mapped.get("error") or "Invalid row",
+            })
+            continue
+
+        payload = mapped["payload"]
+        phone = payload["phone"]
+        if skip_duplicates and phone in seen_phones:
+            skipped.append({
+                "row": idx,
+                "name": payload["full_name"],
+                "phone": phone,
+                "reason": "duplicate phone",
+            })
+            continue
+
+        if dry_run:
+            created.append({
+                "row": idx,
+                "name": payload["full_name"],
+                "phone": phone,
+                "email": payload["email"],
+                "city": payload.get("city") or "",
+                "state": payload.get("state") or "",
+            })
+            seen_phones.add(phone)
+            continue
+
+        lead_id = str(uuid.uuid4())
+        code = await _next_lead_code()
+        doc = {
+            "id": lead_id,
+            "code": code,
+            "pipeline": "solar",
+            "tracking_token": _new_tracking_token(),
+            "tracking_visible": True,
+            "full_name": payload["full_name"],
+            "phone": phone,
+            "email": payload["email"],
+            "state": payload.get("state") or "",
+            "city": payload.get("city") or "",
+            "pincode": payload.get("pincode") or "",
+            "address": payload.get("address") or "",
+            "property_type": payload.get("property_type"),
+            "monthly_bill": payload.get("monthly_bill") or 0,
+            "roof_type": None,
+            "timeline": None,
+            "source": payload.get("source") or "Existing Customer",
+            "notes": payload.get("notes") or "",
+            "ip": _client_ip(request),
+            "user_agent": (request.headers.get("user-agent") or "")[:400],
+            "created_at": payload.get("created_at") or now_iso,
+            "updated_at": now_iso,
+            "stages": payload["stages"],
+            "solar": payload.get("solar"),
+            "portal": payload.get("portal"),
+            "legacy_import": True,
+            "site_survey": None,
+            "inventory": [],
+            "quotation": None,
+            "invoice": None,
+            "assigned_to": None,
+            "assigned_name": None,
+            "comments": [],
+            "tasks": [],
+            "activity": [
+                _log_activity(
+                    user,
+                    "lead.imported",
+                    f"Imported from CSV row {idx} ({payload.get('portal', {}).get('application_no') or 'no app no'})",
+                )
+            ],
+            "sheet_synced": False,
+            "email_sent": False,
+            "sheet_error": None,
+            "email_error": None,
+        }
+        await leads_collection.insert_one(doc)
+        seen_phones.add(phone)
+        created.append({
+            "row": idx,
+            "id": lead_id,
+            "code": code,
+            "name": payload["full_name"],
+            "phone": phone,
+        })
+
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "total_rows": len(records),
+        "created": len(created),
+        "skipped": len(skipped),
+        "errors": len(errors),
+        "preview": preview_rows(records),
+        "created_rows": created[:50],
+        "skipped_rows": skipped[:50],
+        "error_rows": errors[:50],
+    }
 
 
 @crm.patch("/leads/{lead_id}")
@@ -1808,11 +2024,27 @@ class WhatsAppConfigUpdate(BaseModel):
     timeout_seconds: Optional[int] = Field(default=None, ge=1, le=300)
     payload_template: Optional[str] = Field(default=None, max_length=50_000)
     base_url: Optional[str] = Field(default=None, max_length=1000)
+    wacrm_base_url: Optional[str] = Field(default=None, max_length=1000)
+    wacrm_api_key: Optional[str] = Field(default=None, max_length=2000)
 
 
 class WhatsAppTestSend(BaseModel):
     phone: str = Field(..., min_length=8, max_length=20)
     event: Optional[str] = Field(default=None, max_length=60)
+
+
+class WhatsAppDocumentSend(BaseModel):
+    document_type: Optional[str] = Field(default="document", max_length=40)
+    document_no: Optional[str] = Field(default="", max_length=80)
+    message: Optional[str] = Field(default=None, max_length=2000)
+    stage_key: Optional[str] = Field(default=None, max_length=80)
+    doc_id: Optional[str] = Field(default=None, max_length=80)
+    payment_id: Optional[str] = Field(default=None, max_length=80)
+
+
+class WhatsAppChatSend(BaseModel):
+    phone: str = Field(..., min_length=8, max_length=20)
+    text: str = Field(..., min_length=1, max_length=4000)
 
 
 _SUBSIDY_STATUSES = {"Not Applied", "Applied", "Approved", "Disbursed", "Rejected"}
@@ -2053,6 +2285,166 @@ async def crm_whatsapp_test(
     return {"ok": out.get("ok", False), "status": out.get("status"), "log_id": out.get("log_id")}
 
 
+async def _store_generated_pdf(
+    lead: Dict[str, Any],
+    pdf_bytes: bytes,
+    filename: str,
+    doc_type: str,
+) -> str:
+    """Persist a generated PDF so WaCRM can fetch it via the public tracking URL."""
+    from bson import Binary
+    doc_id = str(uuid.uuid4())
+    at = datetime.now(timezone.utc).isoformat()
+    await documents_collection.insert_one({
+        "id": doc_id,
+        "lead_id": lead["id"],
+        "stage_key": "generated",
+        "name": filename[:255],
+        "content_type": "application/pdf",
+        "size": len(pdf_bytes),
+        "data": Binary(pdf_bytes),
+        "uploaded_by": "system",
+        "kind": "generated_pdf",
+        "document_type": doc_type,
+        "at": at,
+    })
+    return doc_id
+
+
+def _payment_from_lead(lead: Dict[str, Any], payment_id: Optional[str], document_no: str) -> Optional[Dict[str, Any]]:
+    inv = lead.get("invoice") or {}
+    payments = list(inv.get("payments") or [])
+    if payment_id:
+        found = next((p for p in payments if p.get("id") == payment_id), None)
+        if found:
+            return found
+    if document_no:
+        found = next((p for p in payments if str(p.get("receiptNo") or "") == document_no), None)
+        if found:
+            return found
+    if len(payments) == 1:
+        return payments[0]
+    return None
+
+
+@crm.post("/leads/{lead_id}/whatsapp/document")
+async def crm_whatsapp_document(
+    lead_id: str,
+    payload: WhatsAppDocumentSend,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Send a quotation/invoice/receipt/file to the customer via WaCRM WhatsApp API."""
+    lead = await _get_lead_or_404(lead_id)
+    phone = _e164_phone(lead.get("phone"))
+    if not phone:
+        raise HTTPException(status_code=400, detail="Lead has no valid phone number")
+    doc_type = (payload.document_type or "document").strip() or "document"
+    doc_no = (payload.document_no or "").strip()
+    label = {
+        "quotation": "quotation",
+        "commercial": "commercial quotation",
+        "invoice": "invoice",
+        "receipt": "payment receipt",
+        "photo": "site photo",
+        "file": "document",
+    }.get(doc_type.lower(), doc_type)
+    name = (lead.get("full_name") or lead.get("name") or "there").split(" ")[0]
+    code = lead.get("code") or ""
+    track = _tracking_url(lead) or ""
+    caption = (payload.message or "").strip() or (
+        f"Hi {name}, your {label} {doc_no} for {code} is ready from Step Solar."
+    )
+
+    media_url = None
+    media_kind = None
+    filename = None
+    token = lead.get("tracking_token")
+
+    if payload.doc_id:
+        stored = await documents_collection.find_one(
+            {"id": payload.doc_id, "lead_id": lead_id},
+            {"_id": 0, "name": 1, "content_type": 1},
+        )
+        if not stored:
+            raise HTTPException(status_code=404, detail="Document not found")
+        if not token:
+            raise HTTPException(status_code=400, detail="Lead has no tracking token")
+        media_url = f"{base_url()}/api/track/{token}/documents/{payload.doc_id}"
+        filename = stored.get("name") or "document"
+        ctype = str(stored.get("content_type") or "")
+        if ctype.startswith("image/"):
+            media_kind = "image"
+        else:
+            media_kind = "document"
+    elif doc_type.lower() in {"quotation", "commercial", "invoice", "receipt"}:
+        payment = None
+        if doc_type.lower() == "quotation" and not lead.get("quotation"):
+            raise HTTPException(status_code=400, detail="Create a quotation first")
+        if doc_type.lower() == "commercial" and not lead.get("quotation"):
+            raise HTTPException(status_code=400, detail="Create a quotation first")
+        if doc_type.lower() == "invoice" and not lead.get("invoice"):
+            raise HTTPException(status_code=400, detail="Create an invoice first")
+        if doc_type.lower() == "receipt":
+            payment = _payment_from_lead(lead, payload.payment_id, doc_no)
+            if not payment:
+                raise HTTPException(status_code=400, detail="Receipt payment not found")
+            if not doc_no:
+                doc_no = str(payment.get("receiptNo") or "")
+        try:
+            pdf_bytes, filename = generate_document_pdf(lead, doc_type.lower(), payment)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not token:
+            token = _new_tracking_token()
+        await leads_collection.update_one(
+            {"id": lead_id},
+            {"$set": {"tracking_token": token, "tracking_visible": True}},
+        )
+        lead["tracking_token"] = token
+        lead["tracking_visible"] = True
+        track = _tracking_url(lead) or track
+        stored_id = await _store_generated_pdf(lead, pdf_bytes, filename, doc_type.lower())
+        media_url = f"{base_url()}/api/track/{token}/documents/{stored_id}"
+        media_kind = "document"
+
+    wacrm_out: Dict[str, Any] = {}
+    try:
+        body: Dict[str, Any] = {"to": phone}
+        if media_url:
+            body["type"] = media_kind
+            body["media_url"] = media_url
+            body["text"] = caption
+            if filename and media_kind == "document":
+                body["filename"] = filename
+        else:
+            body["type"] = "text"
+            body["text"] = caption
+        wacrm_out = await _wacrm_request("POST", "/api/v1/messages", json_body=body)
+    except HTTPException as e:
+        extra: Dict[str, Any] = {
+            "doc": f"{label} {doc_no}".strip(),
+            "document_type": doc_type,
+            "document_no": doc_no,
+            "link": media_url or track,
+            "sent_by": user.full_name or user.email,
+            "message": caption,
+        }
+        fallback = await _notify_whatsapp(lead, "DOCUMENT_SENT", extra)
+        if not fallback.get("ok"):
+            raise HTTPException(status_code=e.status_code, detail=e.detail)
+        await _push_activity(lead_id, user, "whatsapp.document", f"WhatsApp {label} sent")
+        return {
+            "ok": True,
+            "status": fallback.get("status"),
+            "log_id": fallback.get("log_id"),
+            "channel": "provider",
+        }
+
+    await _push_activity(lead_id, user, "whatsapp.document", f"WhatsApp {label} sent")
+    data = wacrm_out.get("data") or wacrm_out
+    return {"ok": True, "status": "SUCCESS", "channel": "wacrm", "data": data, "filename": filename}
+
+
 # --------------------------------------------------------------------------- #
 # WhatsApp provider settings (Admin) — DB-backed, overrides env at send time
 # --------------------------------------------------------------------------- #
@@ -2084,11 +2476,37 @@ def _db_config_view(cfg: Dict[str, Any]) -> Dict[str, Any]:
     key = str(view.get("api_key") or "")
     view["api_key_set"] = bool(key)
     view.pop("api_key", None)
+    wacrm_key = str(view.get("wacrm_api_key") or "")
+    view["wacrm_api_key_set"] = bool(wacrm_key)
+    view.pop("wacrm_api_key", None)
     return view
 
 
+def _e164_phone(phone: Any) -> str:
+    digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
+    if not digits:
+        return ""
+    if digits.startswith("91") and len(digits) == 12:
+        return f"+{digits}"
+    if len(digits) == 10:
+        return f"+91{digits}"
+    if str(phone).strip().startswith("+"):
+        return f"+{digits}"
+    return f"+{digits}"
+
+
+def _wacrm_credentials() -> tuple[str, str]:
+    db_cfg = get_runtime_config()
+    base = str(
+        db_cfg.get("wacrm_base_url")
+        or os.environ.get("WACRM_BASE_URL", "https://wa-crm-step-solar-live.vercel.app")
+    ).strip().rstrip("/")
+    key = str(db_cfg.get("wacrm_api_key") or os.environ.get("WACRM_API_KEY", "")).strip()
+    return base, key
+
+
 @crm.get("/whatsapp/config")
-async def crm_whatsapp_config(user: CurrentUser = Depends(require_admin)):
+async def crm_whatsapp_config(user: CurrentUser = Depends(require_super_admin)):
     db_cfg = await _load_whatsapp_settings()
     return {
         "enabled": whatsapp_enabled(),
@@ -2096,13 +2514,14 @@ async def crm_whatsapp_config(user: CurrentUser = Depends(require_admin)):
         "db_config": _db_config_view(db_cfg) if db_cfg else None,
         "effective": effective_config(mask_key=True),
         "events": WHATSAPP_EVENTS,
+        "is_super_admin": True,
     }
 
 
 @crm.put("/whatsapp/config")
 async def crm_whatsapp_config_update(
     payload: WhatsAppConfigUpdate,
-    user: CurrentUser = Depends(require_admin),
+    user: CurrentUser = Depends(require_super_admin),
 ):
     data = payload.model_dump(exclude_unset=True)
 
@@ -2127,14 +2546,14 @@ async def crm_whatsapp_config_update(
 
     db_cfg = (await _load_whatsapp_settings()) or {}
 
-    # api_key: masked placeholder → keep existing; empty string → clear;
-    # otherwise store the new key.
-    if "api_key" in data:
-        new_key = str(data["api_key"] or "").strip()
-        if new_key and "•" in new_key:
-            data.pop("api_key", None)
-        else:
-            data["api_key"] = new_key
+    # api_key / wacrm_api_key: masked placeholder → keep existing; empty → clear.
+    for secret_field in ("api_key", "wacrm_api_key"):
+        if secret_field in data:
+            new_key = str(data[secret_field] or "").strip()
+            if new_key and "•" in new_key:
+                data.pop(secret_field, None)
+            else:
+                data[secret_field] = new_key
 
     merged = {**db_cfg, **{k: v for k, v in data.items() if v is not None}}
     await _save_whatsapp_settings(merged, user)
@@ -2152,7 +2571,7 @@ async def crm_whatsapp_config_update(
 @crm.post("/whatsapp/test-send")
 async def crm_whatsapp_test_send(
     payload: WhatsAppTestSend,
-    user: CurrentUser = Depends(require_admin),
+    user: CurrentUser = Depends(require_super_admin),
 ):
     """Send a test WhatsApp to an arbitrary phone using the current config."""
     if not whatsapp_enabled():
@@ -2185,6 +2604,85 @@ async def crm_whatsapp_test_send(
         "log_id": out.get("log_id"),
         "error": out.get("error"),
     }
+
+
+async def _wacrm_request(method: str, path: str, *, json_body: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    import httpx
+    base, key = _wacrm_credentials()
+    if not base:
+        raise HTTPException(status_code=400, detail="WaCRM base URL is not configured")
+    if not key:
+        raise HTTPException(status_code=400, detail="WaCRM API key is not configured — set it in Master Config")
+    url = f"{base}{path}"
+    headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            res = await client.request(method, url, headers=headers, json=json_body, params=params)
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Cannot reach WaCRM: {e}")
+    try:
+        body = res.json()
+    except Exception:
+        body = {"error": {"message": res.text[:400]}}
+    if res.status_code >= 400:
+        err = body.get("error") if isinstance(body, dict) else None
+        msg = (err or {}).get("message") if isinstance(err, dict) else None
+        raise HTTPException(status_code=res.status_code, detail=msg or f"WaCRM error ({res.status_code})")
+    return body if isinstance(body, dict) else {"data": body}
+
+
+@crm.get("/whatsapp/chat")
+async def crm_whatsapp_chat(
+    phone: str = Query(..., min_length=8, max_length=20),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Load conversation history for a customer phone from WaCrmStepSolar_Live."""
+    e164 = _e164_phone(phone)
+    if not e164:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    contacts = await _wacrm_request("GET", "/api/v1/contacts", params={"search": e164, "limit": 20})
+    rows = contacts.get("data") or []
+    contact = next((c for c in rows if str(c.get("phone") or "").replace(" ", "") in {e164, e164.lstrip("+")}), None)
+    if contact is None and rows:
+        contact = rows[0]
+    if not contact:
+        return {"configured": True, "phone": e164, "contact": None, "conversation_id": None, "messages": []}
+    convs = await _wacrm_request("GET", "/api/v1/conversations", params={"contact_id": contact.get("id"), "limit": 5})
+    conv_rows = convs.get("data") or []
+    conversation = conv_rows[0] if conv_rows else None
+    messages: List[Dict[str, Any]] = []
+    if conversation and conversation.get("id"):
+        msg_res = await _wacrm_request(
+            "GET",
+            f"/api/v1/conversations/{conversation['id']}/messages",
+            params={"limit": 50},
+        )
+        messages = list(reversed(msg_res.get("data") or []))
+    return {
+        "configured": True,
+        "phone": e164,
+        "contact": contact,
+        "conversation_id": (conversation or {}).get("id"),
+        "messages": messages,
+    }
+
+
+@crm.post("/whatsapp/chat")
+async def crm_whatsapp_chat_send(
+    payload: WhatsAppChatSend,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Send a WhatsApp text via WaCrmStepSolar_Live public API."""
+    e164 = _e164_phone(payload.phone)
+    if not e164:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    out = await _wacrm_request(
+        "POST",
+        "/api/v1/messages",
+        json_body={"to": e164, "type": "text", "text": payload.text.strip()},
+    )
+    data = out.get("data") or out
+    return {"ok": True, "phone": e164, "data": data}
 
 
 # --------------------------------------------------------------------------- #
@@ -2273,7 +2771,9 @@ async def public_track(token: str):
 
 @app.get("/api/track/{token}/documents/{doc_id}")
 async def public_track_document(token: str, doc_id: str):
-    lead = await _public_lead_or_404(token)
+    lead = await leads_collection.find_one({"tracking_token": token}, {"_id": 0, "id": 1})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Tracking link not found")
     doc = await documents_collection.find_one(
         {"id": doc_id, "lead_id": lead["id"]},
         {"_id": 0, "data": 1, "name": 1, "content_type": 1},
@@ -2281,17 +2781,23 @@ async def public_track_document(token: str, doc_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     from io import BytesIO
+    ctype = doc.get("content_type") or "application/octet-stream"
+    name = doc.get("name") or "document"
+    disposition = "inline" if ctype == "application/pdf" or str(ctype).startswith("image/") else "attachment"
     return StreamingResponse(
         BytesIO(doc["data"]),
-        media_type=doc.get("content_type", "application/octet-stream"),
-        headers={"Content-Disposition": f'attachment; filename="{doc.get("name", "document")}"'},
+        media_type=ctype,
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{name}"',
+            "Cache-Control": "public, max-age=300",
+        },
     )
 
 
 # --------------------------------------------------------------------------- #
-# Admin — user management (Admin role only)
+# Admin — user management (super admin email only)
 # --------------------------------------------------------------------------- #
-admin_router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+admin_router = APIRouter(prefix="/admin", dependencies=[Depends(require_super_admin)])
 
 
 class AdminUserOut(BaseModel):

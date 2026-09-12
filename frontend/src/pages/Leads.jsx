@@ -4,6 +4,7 @@ import { useStore, store } from '../lib/store';
 import { SOURCES, STATES, CITIES, ROOF_TYPES, PROPERTY_TYPES, TIMELINES, PIPELINE, PIPELINE_MAP, leadCsv } from '../lib/backend';
 import { formatDate, relativeDue } from '../lib/format';
 import { Card, Icon, Modal, Badge, StageBadge, Avatar, useToast } from '../components/ui';
+import WhatsAppChat from '../components/WhatsAppChat';
 
 export default function Leads() {
   const state = useStore();
@@ -14,8 +15,10 @@ export default function Leads() {
   const [filters, setFilters] = useState({ source: '', state: '', q: '' });
   const [sort, setSort] = useState({ key: 'createdAt', dir: 'desc' });
   const [newLead, setNewLead] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [draft, setDraft] = useState({});
   const [busy, setBusy] = useState(false);
+  const [chatLead, setChatLead] = useState(null);
 
   const filtered = useMemo(() => {
     let list = [...state.leads];
@@ -117,6 +120,9 @@ export default function Leads() {
         <button className="btn btn-outline btn-sm" onClick={exportCsv}>
           <Icon name="download" size={14} /> Export CSV
         </button>
+        <button className="btn btn-outline btn-sm" onClick={() => setImportOpen(true)}>
+          <Icon name="upload" size={14} /> Import CSV
+        </button>
         <button className="btn btn-primary" onClick={() => setNewLead(true)}>
           <Icon name="plus" size={15} /> New Lead
         </button>
@@ -188,7 +194,7 @@ export default function Leads() {
                       <td>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }} onClick={(e) => e.stopPropagation()}>
                           <ActionBtn title="Call" tone="sky" icon="phone" onClick={() => { window.location.href = `tel:${l.phone}`; }} />
-                          <ActionBtn title="WhatsApp" tone="green" icon="whatsapp" onClick={() => { window.open(`https://wa.me/91${l.phone}`, '_blank'); }} />
+                          <ActionBtn title="WhatsApp" tone="green" icon="whatsapp" onClick={() => setChatLead(l)} />
                           <ActionBtn title="Open" tone="slate" icon="dots" onClick={() => navigate(`/leads/${l.id}`)} />
                         </div>
                       </td>
@@ -200,9 +206,10 @@ export default function Leads() {
           </div>
         </Card>
       ) : (
-        <KanbanView byStage={byStage} navigate={navigate} />
+        <KanbanView byStage={byStage} navigate={navigate} onWhatsApp={setChatLead} />
       )}
 
+      <ImportCsvModal open={importOpen} onClose={() => setImportOpen(false)} toast={toast} />
       <Modal
         open={newLead}
         onClose={() => setNewLead(false)}
@@ -218,6 +225,7 @@ export default function Leads() {
       >
         <NewLeadForm draft={draft} setDraft={setDraft} />
       </Modal>
+      <WhatsAppChat open={Boolean(chatLead)} onClose={() => setChatLead(null)} lead={chatLead} />
     </div>
   );
 }
@@ -239,7 +247,7 @@ function ActionBtn({ title, icon, tone, onClick }) {
   );
 }
 
-function KanbanView({ byStage, navigate }) {
+function KanbanView({ byStage, navigate, onWhatsApp }) {
   return (
     <div className="kanban">
       {PIPELINE.map((s) => (
@@ -267,7 +275,7 @@ function KanbanView({ byStage, navigate }) {
                   <button className="btn btn-sm btn-primary" style={{ flex: 1, padding: '4px 8px', fontSize: 11.5 }} onClick={(e) => { e.stopPropagation(); window.location.href = `tel:${l.phone}`; }}>
                     <Icon name="phone" size={12} /> Call
                   </button>
-                  <button className="btn btn-sm btn-whatsapp" style={{ flex: 1, padding: '4px 8px', fontSize: 11.5 }} onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/91${l.phone}`, '_blank'); }}>
+                  <button className="btn btn-sm btn-whatsapp" style={{ flex: 1, padding: '4px 8px', fontSize: 11.5 }} onClick={(e) => { e.stopPropagation(); onWhatsApp(l); }}>
                     <Icon name="whatsapp" size={12} /> WhatsApp
                   </button>
                 </div>
@@ -276,6 +284,121 @@ function KanbanView({ byStage, navigate }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function ImportCsvModal({ open, onClose, toast }) {
+  const [file, setFile] = useState(null);
+  const [skipDup, setSkipDup] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  function reset() {
+    setFile(null);
+    setResult(null);
+    setSkipDup(true);
+    setBusy(false);
+  }
+
+  function close() {
+    reset();
+    onClose();
+  }
+
+  async function run(dryRun) {
+    if (!file) {
+      toast('Choose a CSV file first', 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await store.importLeads(file, { dryRun, skipDuplicates: skipDup });
+      setResult(res);
+      if (dryRun) {
+        toast(`Preview: ${res.created} ready, ${res.skipped} skipped, ${res.errors} errors`);
+      } else {
+        toast(`Imported ${res.created} customers (${res.skipped} skipped, ${res.errors} errors)`);
+      }
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={close}
+      title="Import existing customers (CSV)"
+      wide
+      footer={
+        <>
+          <button className="btn btn-outline" onClick={close}>Close</button>
+          <button className="btn btn-outline" onClick={() => run(true)} disabled={busy || !file}>
+            {busy ? 'Checking…' : 'Preview'}
+          </button>
+          <button className="btn btn-primary" onClick={() => run(false)} disabled={busy || !file}>
+            {busy ? 'Importing…' : 'Import into CRM'}
+          </button>
+        </>
+      }
+    >
+      <p style={{ fontSize: 13, color: 'var(--slate-600)', marginBottom: 14 }}>
+        National Portal / PM Surya Ghar dump paste karo — header row waise hi reh sakti hai.
+        Name + 10-digit mobile zaroori hai. Duplicate phone skip ho jayega.
+      </p>
+      <div className="form-grid">
+        <div className="field full">
+          <label>CSV file</label>
+          <input
+            className="input"
+            type="file"
+            accept=".csv,text/csv,text/tab-separated-values"
+            onChange={(e) => { setFile(e.target.files?.[0] || null); setResult(null); }}
+          />
+          {file && <div className="cell-sub" style={{ marginTop: 6 }}>{file.name} · {(file.size / 1024).toFixed(1)} KB</div>}
+        </div>
+        <div className="field full" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="checkbox" className="task-check" checked={skipDup} onChange={(e) => setSkipDup(e.target.checked)} id="skip-dup" />
+          <label htmlFor="skip-dup" style={{ margin: 0 }}>Skip rows whose mobile already exists in CRM</label>
+        </div>
+      </div>
+      {result && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            <Badge tone="navy">{result.total_rows} rows</Badge>
+            <Badge tone="green">{result.created} {result.dry_run ? 'ready' : 'imported'}</Badge>
+            <Badge tone="amber">{result.skipped} skipped</Badge>
+            <Badge tone="rose">{result.errors} errors</Badge>
+          </div>
+          <ImportResultTable title="Errors" rows={result.error_rows} cols={['row', 'name', 'phone', 'error']} />
+          <ImportResultTable title="Skipped" rows={result.skipped_rows} cols={['row', 'name', 'phone', 'reason']} />
+          <ImportResultTable title={result.dry_run ? 'Will import' : 'Imported'} rows={result.created_rows} cols={['row', 'code', 'name', 'phone']} />
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function ImportResultTable({ title, rows, cols }) {
+  if (!rows || !rows.length) return null;
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className="section-title" style={{ marginTop: 8 }}>{title} ({rows.length}{rows.length === 50 ? '+' : ''})</div>
+      <div className="table-wrap">
+        <table className="data">
+          <thead>
+            <tr>{cols.map((c) => <th key={c}>{c}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>{cols.map((c) => <td key={c}>{r[c] || '—'}</td>)}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

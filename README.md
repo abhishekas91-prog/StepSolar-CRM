@@ -5,6 +5,16 @@ original `StepSolar` monorepo. This repo contains the FastAPI backend and the
 React CRM frontend. The public marketing website lives in the separate
 `StepSolar-Website` repo.
 
+## Related repos
+
+- `StepSolar-Website` — public marketing site
+- `StepSolar-Field-App` — Android app for Sales/Ops employees to update
+  pipeline stages from the field (React Native/Expo). Separate repo, no
+  shared code — connected only through the backend API. **See
+  `API_CONTRACT.md`** in this repo before changing any `/api/crm/*`
+  request/response shape: it's the checklist for whether the field app
+  needs a matching update.
+
 ## Structure
 
 - `backend/` — FastAPI + MongoDB API (leads, auth, CRM, admin, WhatsApp)
