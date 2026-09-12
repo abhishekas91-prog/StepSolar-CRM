@@ -110,7 +110,7 @@ export function mapLead(b) {
     assignedTo: b.assigned_to || null,
     assignedName: b.assigned_name || null,
     trackingToken: b.tracking_token,
-    address: [b.city, b.state].filter(Boolean).join(', '),
+    address: b.address || [b.city, b.state].filter(Boolean).join(', '),
     currentStageKey: cur.key,
     currentStageLabel: cur.label,
     currentStageColor: cur.color,

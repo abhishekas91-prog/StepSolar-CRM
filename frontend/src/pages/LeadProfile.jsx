@@ -21,7 +21,7 @@ import {
 } from '../lib/documents';
 
 const TABS = ['Pipeline', 'Overview', 'Field Updates', 'Quotation', 'Invoice', 'Tasks', 'Comments', 'Activity', 'Documents'];
-const ACT_ICON = { 'lead.created': 'plus', 'stages.updated': 'refresh', 'quotation.updated': 'proposal', 'quotation.status': 'proposal', 'invoice.created': 'billing', 'payment.recorded': 'billing', 'payment.deleted': 'trash', 'task.created': 'check', 'task.updated': 'check', 'task.deleted': 'trash', 'comment.created': 'mail', 'survey.saved': 'survey', 'solar.saved': 'sun', 'document.uploaded': 'file', 'document.deleted': 'trash', 'assigned': 'users', 'lead.updated': 'edit' };
+const ACT_ICON = { 'lead.created': 'plus', 'lead.imported': 'upload', 'stages.updated': 'refresh', 'quotation.updated': 'proposal', 'quotation.status': 'proposal', 'invoice.created': 'billing', 'payment.recorded': 'billing', 'payment.deleted': 'trash', 'task.created': 'check', 'task.updated': 'check', 'task.deleted': 'trash', 'comment.created': 'mail', 'survey.saved': 'survey', 'solar.saved': 'sun', 'document.uploaded': 'file', 'document.deleted': 'trash', 'assigned': 'users', 'lead.updated': 'edit' };
 
 const STATUS_COLOR = { Pending: 'slate', 'In Progress': 'amber', Completed: 'green' };
 
@@ -336,7 +336,7 @@ function OverviewTab({ lead, toast }) {
             <dt>Full Name</dt><dd>{lead.name}</dd>
             <dt>Phone</dt><dd>{lead.phone}</dd>
             <dt>Email</dt><dd>{lead.email}</dd>
-            <dt>Address</dt><dd>{[lead.city, lead.state, lead.pincode].filter(Boolean).join(', ')}</dd>
+            <dt>Address</dt><dd>{lead.address || [lead.city, lead.state, lead.pincode].filter(Boolean).join(', ') || '—'}</dd>
             <dt>Property Type</dt><dd>{lead.propertyType || '—'}</dd>
             <dt>Roof Type</dt><dd>{lead.roofType || '—'}</dd>
             <dt>Monthly Bill</dt><dd>{lead.monthlyBill ? formatINR(lead.monthlyBill) : '—'}</dd>
