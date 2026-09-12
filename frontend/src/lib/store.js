@@ -109,6 +109,12 @@ export const store = {
     await refreshLeads();
   },
 
+  async importLeads(file, opts) {
+    const result = await api.importLeads(file, opts);
+    if (!opts?.dryRun) await refreshLeads();
+    return result;
+  },
+
   async updateLead(id, patch) {
     await api.updateLead(id, patch);
     await refreshLeads();

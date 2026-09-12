@@ -85,6 +85,13 @@ export const api = {
   leads: (limit = 2000) => request(`/crm/leads?limit=${limit}`),
   getLead: (id) => request(`/crm/leads/${id}`),
   createLead: (data) => request('/crm/leads', { method: 'POST', body: data }),
+  importLeads: (file, { dryRun = false, skipDuplicates = true } = {}) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('dry_run', dryRun ? 'true' : 'false');
+    fd.append('skip_duplicates', skipDuplicates ? 'true' : 'false');
+    return request('/crm/leads/import', { method: 'POST', formData: fd });
+  },
   updateLead: (id, patch) => request(`/crm/leads/${id}`, { method: 'PATCH', body: patch }),
   deleteLead: (id) => request(`/crm/leads/${id}`, { method: 'DELETE' }),
 

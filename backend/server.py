@@ -12,6 +12,7 @@ CRM (valid JWT required for all /api/crm/*; stage edits are further
 restricted server-side to the stage's owner role, or Admin):
 - GET   /api/crm/leads        return every lead (full CRM shape)
 - POST  /api/crm/leads        add lead from CRM (auto-code, stages, source=Admin)
+- POST  /api/crm/leads/import bulk CSV (National Portal / PM Surya Ghar dump)
 - PATCH /api/crm/leads/{id}   partial update (any of: stages, quotation, invoice, contact fields)
 - GET   /api/crm/meta         return {nextLeadCode} for display
 
@@ -50,6 +51,7 @@ from pymongo import ReturnDocument
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from starlette.middleware.cors import CORSMiddleware
 
+from csv_import import map_row, parse_csv_bytes, preview_rows
 from lead_service import (
     SHEET_HEADERS,
     append_lead_to_sheet,
@@ -1052,6 +1054,162 @@ async def crm_create_lead(
     await leads_collection.insert_one(doc)
     await _notify_whatsapp(doc, "LEAD_CAPTURED")
     return _clean(doc)
+
+
+MAX_CSV_IMPORT_BYTES = 8 * 1024 * 1024
+MAX_CSV_IMPORT_ROWS = 2000
+
+
+def _form_flag(value: Optional[str], default: bool) -> bool:
+    if value is None or str(value).strip() == "":
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+@crm.post("/leads/import")
+async def crm_import_leads(
+    request: Request,
+    file: UploadFile = File(...),
+    dry_run: Optional[str] = Form(default="false"),
+    skip_duplicates: Optional[str] = Form(default="true"),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Bulk-create CRM leads from a National Portal / PM Surya Ghar CSV dump."""
+    if user.role not in {"Admin", "Sales"}:
+        raise HTTPException(status_code=403, detail="CSV import requires Admin or Sales")
+    dry_run = _form_flag(dry_run, False)
+    skip_duplicates = _form_flag(skip_duplicates, True)
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="CSV file is empty")
+    if len(raw) > MAX_CSV_IMPORT_BYTES:
+        raise HTTPException(status_code=400, detail="CSV file is larger than 8 MB")
+
+    _headers, records = parse_csv_bytes(raw)
+    if not records:
+        raise HTTPException(status_code=400, detail="CSV has a header but no data rows")
+    if len(records) > MAX_CSV_IMPORT_ROWS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"CSV has {len(records)} rows; max is {MAX_CSV_IMPORT_ROWS}",
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    created: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+    seen_phones: set = set()
+
+    if skip_duplicates:
+        existing = await leads_collection.find({}, {"_id": 0, "phone": 1}).to_list(length=20_000)
+        seen_phones.update(str(d.get("phone") or "") for d in existing if d.get("phone"))
+
+    for idx, row in enumerate(records, start=2):
+        mapped = map_row(row, now_iso=now_iso)
+        if not mapped.get("ok"):
+            errors.append({
+                "row": idx,
+                "name": (row.get("full_name") or "").strip(),
+                "phone": mapped.get("phone") or (row.get("phone") or "").strip(),
+                "error": mapped.get("error") or "Invalid row",
+            })
+            continue
+
+        payload = mapped["payload"]
+        phone = payload["phone"]
+        if skip_duplicates and phone in seen_phones:
+            skipped.append({
+                "row": idx,
+                "name": payload["full_name"],
+                "phone": phone,
+                "reason": "duplicate phone",
+            })
+            continue
+
+        if dry_run:
+            created.append({
+                "row": idx,
+                "name": payload["full_name"],
+                "phone": phone,
+                "email": payload["email"],
+                "city": payload.get("city") or "",
+                "state": payload.get("state") or "",
+            })
+            seen_phones.add(phone)
+            continue
+
+        lead_id = str(uuid.uuid4())
+        code = await _next_lead_code()
+        doc = {
+            "id": lead_id,
+            "code": code,
+            "pipeline": "solar",
+            "tracking_token": _new_tracking_token(),
+            "tracking_visible": True,
+            "full_name": payload["full_name"],
+            "phone": phone,
+            "email": payload["email"],
+            "state": payload.get("state") or "",
+            "city": payload.get("city") or "",
+            "pincode": payload.get("pincode") or "",
+            "address": payload.get("address") or "",
+            "property_type": payload.get("property_type"),
+            "monthly_bill": payload.get("monthly_bill") or 0,
+            "roof_type": None,
+            "timeline": None,
+            "source": payload.get("source") or "Existing Customer",
+            "notes": payload.get("notes") or "",
+            "ip": _client_ip(request),
+            "user_agent": (request.headers.get("user-agent") or "")[:400],
+            "created_at": payload.get("created_at") or now_iso,
+            "updated_at": now_iso,
+            "stages": payload["stages"],
+            "solar": payload.get("solar"),
+            "portal": payload.get("portal"),
+            "legacy_import": True,
+            "site_survey": None,
+            "inventory": [],
+            "quotation": None,
+            "invoice": None,
+            "assigned_to": None,
+            "assigned_name": None,
+            "comments": [],
+            "tasks": [],
+            "activity": [
+                _log_activity(
+                    user,
+                    "lead.imported",
+                    f"Imported from CSV row {idx} ({payload.get('portal', {}).get('application_no') or 'no app no'})",
+                )
+            ],
+            "sheet_synced": False,
+            "email_sent": False,
+            "sheet_error": None,
+            "email_error": None,
+        }
+        await leads_collection.insert_one(doc)
+        seen_phones.add(phone)
+        created.append({
+            "row": idx,
+            "id": lead_id,
+            "code": code,
+            "name": payload["full_name"],
+            "phone": phone,
+        })
+
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "total_rows": len(records),
+        "created": len(created),
+        "skipped": len(skipped),
+        "errors": len(errors),
+        "preview": preview_rows(records),
+        "created_rows": created[:50],
+        "skipped_rows": skipped[:50],
+        "error_rows": errors[:50],
+    }
 
 
 @crm.patch("/leads/{lead_id}")
