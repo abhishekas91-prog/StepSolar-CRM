@@ -123,3 +123,34 @@ def test_stage_advances_for_installed_plant():
 def test_subsidy_disbursed_completes_pipeline():
     stages = build_stages("subsidy_disbursed", "2026-01-01T00:00:00+00:00")
     assert all(s["status"] == "Completed" for s in stages)
+
+
+def test_masked_phone_from_pm_surya_ghar_accepted():
+    _, records = parse_csv_bytes(
+        (HEADERS + "\n" + _row(**{
+            "Mobile No. of Consumer": "******1732",
+            "Email of Consumer": "******.com",
+            "Consumer Number": "'7883230100",
+            "Application Number": "NP-UPPOV26-11857786",
+        })).encode()
+    )
+    mapped = map_row(records[0])
+    assert mapped["ok"] is True
+    assert mapped["payload"]["phone"] == "******1732"
+    assert mapped["payload"]["is_phone_masked"] is True
+    assert mapped["payload"]["solar"]["discom_consumer_no"] == "7883230100"
+    assert mapped["payload"]["email"] == "noreply.npuppov2611857786@imported.stepsolar.in"
+
+
+def test_masked_email_gets_app_no_fallback():
+    _, records = parse_csv_bytes(
+        (HEADERS + "\n" + _row(**{
+            "Mobile No. of Consumer": "9876543210",
+            "Email of Consumer": "******.com",
+            "Application Number": "APP-2026-99",
+        })).encode()
+    )
+    mapped = map_row(records[0])
+    assert mapped["ok"] is True
+    assert mapped["payload"]["email"] == "noreply.app202699@imported.stepsolar.in"
+

@@ -345,10 +345,19 @@ function ImportCsvModal({ open, onClose, toast }) {
         </>
       }
     >
-      <p style={{ fontSize: 13, color: 'var(--slate-600)', marginBottom: 14 }}>
-        National Portal / PM Surya Ghar dump paste karo — header row waise hi reh sakti hai.
-        Name + 10-digit mobile zaroori hai. Duplicate phone skip ho jayega.
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 14, flexWrap: 'wrap' }}>
+        <p style={{ fontSize: 13, color: 'var(--slate-600)', margin: 0, flex: 1, minWidth: 260 }}>
+          National Portal / PM Surya Ghar portal se download kiya gaya CSV dump yahan directly upload kar sakte hain — portal ke masked numbers (******1234) aur sabhi columns automatically detect ho jayenge. Duplicate application numbers skip ho jayenge.
+        </p>
+        <a
+          href="/import.csv"
+          download="import.csv"
+          className="btn btn-outline btn-sm"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none', whiteSpace: 'nowrap' }}
+        >
+          <Icon name="download" size={14} /> Download Sample import.csv
+        </a>
+      </div>
       <div className="form-grid">
         <div className="field full">
           <label>CSV file</label>
@@ -362,7 +371,7 @@ function ImportCsvModal({ open, onClose, toast }) {
         </div>
         <div className="field full" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" className="task-check" checked={skipDup} onChange={(e) => setSkipDup(e.target.checked)} id="skip-dup" />
-          <label htmlFor="skip-dup" style={{ margin: 0 }}>Skip rows whose mobile already exists in CRM</label>
+          <label htmlFor="skip-dup" style={{ margin: 0 }}>Skip duplicate applications / existing customers</label>
         </div>
       </div>
       {result && (

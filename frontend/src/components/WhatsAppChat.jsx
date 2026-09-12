@@ -47,6 +47,12 @@ export default function WhatsAppChat({ open, onClose, lead }) {
       setMessages([]);
       return undefined;
     }
+    if (String(lead.phone).includes('*')) {
+      setMessages([]);
+      setLoading(false);
+      setError(`Consumer phone number is masked from PM Surya Ghar portal (${lead.phone}). Please update with a 10-digit mobile number in Lead Profile to use WhatsApp.`);
+      return undefined;
+    }
     let cancelled = false;
     let first = true;
     setLoading(true);

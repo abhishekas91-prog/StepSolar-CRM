@@ -1100,10 +1100,22 @@ async def crm_import_leads(
     skipped: List[Dict[str, Any]] = []
     errors: List[Dict[str, Any]] = []
     seen_phones: set = set()
+    seen_apps: set = set()
 
     if skip_duplicates:
-        existing = await leads_collection.find({}, {"_id": 0, "phone": 1}).to_list(length=20_000)
-        seen_phones.update(str(d.get("phone") or "") for d in existing if d.get("phone"))
+        existing = await leads_collection.find(
+            {},
+            {"_id": 0, "phone": 1, "portal.application_no": 1, "portal.registration_no": 1, "solar.discom_app_id": 1}
+        ).to_list(length=30_000)
+        for d in existing:
+            p = str(d.get("phone") or "").strip()
+            if p and "*" not in p:
+                seen_phones.add(p)
+            portal_doc = d.get("portal") if isinstance(d.get("portal"), dict) else {}
+            solar_doc = d.get("solar") if isinstance(d.get("solar"), dict) else {}
+            for val in (portal_doc.get("application_no"), portal_doc.get("registration_no"), solar_doc.get("discom_app_id")):
+                if val:
+                    seen_apps.add(str(val).strip().upper())
 
     for idx, row in enumerate(records, start=2):
         mapped = map_row(row, now_iso=now_iso)
@@ -1118,14 +1130,36 @@ async def crm_import_leads(
 
         payload = mapped["payload"]
         phone = payload["phone"]
-        if skip_duplicates and phone in seen_phones:
-            skipped.append({
-                "row": idx,
-                "name": payload["full_name"],
-                "phone": phone,
-                "reason": "duplicate phone",
-            })
-            continue
+        portal_meta = payload.get("portal") or {}
+        solar_meta = payload.get("solar") or {}
+        app_no = str(portal_meta.get("application_no") or solar_meta.get("discom_app_id") or "").strip().upper()
+        reg_no = str(portal_meta.get("registration_no") or "").strip().upper()
+
+        if skip_duplicates:
+            if app_no and app_no in seen_apps:
+                skipped.append({
+                    "row": idx,
+                    "name": payload["full_name"],
+                    "phone": phone,
+                    "reason": f"duplicate application ({app_no})",
+                })
+                continue
+            if reg_no and reg_no in seen_apps:
+                skipped.append({
+                    "row": idx,
+                    "name": payload["full_name"],
+                    "phone": phone,
+                    "reason": f"duplicate registration ({reg_no})",
+                })
+                continue
+            if "*" not in phone and phone in seen_phones:
+                skipped.append({
+                    "row": idx,
+                    "name": payload["full_name"],
+                    "phone": phone,
+                    "reason": "duplicate phone",
+                })
+                continue
 
         if dry_run:
             created.append({
@@ -1136,7 +1170,12 @@ async def crm_import_leads(
                 "city": payload.get("city") or "",
                 "state": payload.get("state") or "",
             })
-            seen_phones.add(phone)
+            if "*" not in phone:
+                seen_phones.add(phone)
+            if app_no:
+                seen_apps.add(app_no)
+            if reg_no:
+                seen_apps.add(reg_no)
             continue
 
         lead_id = str(uuid.uuid4())
@@ -1189,7 +1228,12 @@ async def crm_import_leads(
             "email_error": None,
         }
         await leads_collection.insert_one(doc)
-        seen_phones.add(phone)
+        if "*" not in phone:
+            seen_phones.add(phone)
+        if app_no:
+            seen_apps.add(app_no)
+        if reg_no:
+            seen_apps.add(reg_no)
         created.append({
             "row": idx,
             "id": lead_id,

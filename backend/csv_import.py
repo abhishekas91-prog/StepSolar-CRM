@@ -191,6 +191,8 @@ def parse_csv_bytes(data: bytes) -> Tuple[List[str], List[Dict[str, str]]]:
 
 def _clean(value: Optional[str]) -> str:
     v = (value or "").strip()
+    if v.startswith("'"):
+        v = v[1:].strip()
     if v.lower() in _EMPTY:
         return ""
     return v
@@ -239,13 +241,32 @@ def _parse_date(value: Optional[str]) -> Optional[str]:
     return None
 
 
+def is_masked_phone(value: Optional[str]) -> bool:
+    """Detect PM Surya Ghar portal masked numbers like '******1732'."""
+    v = (value or "").strip()
+    return bool("*" in v and re.search(r"\d", v))
+
+
 def _normalize_phone(value: Optional[str]) -> str:
-    digits = re.sub(r"\D", "", value or "")
+    v = (value or "").strip()
+    if is_masked_phone(v):
+        return v
+    digits = re.sub(r"\D", "", v)
     if digits.startswith("91") and len(digits) >= 12:
         digits = digits[-10:]
     if digits.startswith("0") and len(digits) == 11:
         digits = digits[1:]
     return digits
+
+
+def _clean_email(email: Optional[str], fallback_key: str) -> str:
+    e = _clean(email).lower()
+    if e and "@" in e and not e.startswith("*") and not e.endswith("*"):
+        user, _, domain = e.partition("@")
+        if user and domain and "." in domain and "*" not in user and "*" not in domain:
+            return e
+    key = re.sub(r"[^a-zA-Z0-9]", "", fallback_key or "customer").lower()
+    return f"noreply.{key}@imported.stepsolar.in"
 
 
 def _extract_pincode(address: str) -> str:
@@ -425,13 +446,14 @@ def map_row(row: Dict[str, str], now_iso: Optional[str] = None) -> Dict[str, Any
     if len(name) < 2:
         return {"ok": False, "error": "Consumer name missing"}
 
-    phone = _normalize_phone(row.get("phone"))
-    if not PHONE_RE.match(phone):
-        return {"ok": False, "error": "Invalid mobile number", "phone": phone or _clean(row.get("phone"))}
+    raw_phone = _clean(row.get("phone"))
+    phone = _normalize_phone(raw_phone)
+    is_masked = is_masked_phone(phone)
+    if not (PHONE_RE.match(phone) or is_masked):
+        return {"ok": False, "error": "Invalid mobile number", "phone": phone or raw_phone}
 
-    email = _clean(row.get("email")).lower()
-    if not email or "@" not in email:
-        email = f"noreply.{phone}@imported.stepsolar.in"
+    app_no = _clean(row.get("application_no"))
+    email = _clean_email(row.get("email"), app_no or phone)
 
     address = _clean(row.get("address"))
     pincode = _extract_pincode(address)
@@ -459,6 +481,7 @@ def map_row(row: Dict[str, str], now_iso: Optional[str] = None) -> Dict[str, Any
             "solar": _solar(row),
             "portal": _portal(row),
             "legacy_import": True,
+            "is_phone_masked": is_masked,
         },
     }
 
