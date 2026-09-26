@@ -1,0 +1,26 @@
+.pv-studio { display: flex; flex-direction: column; gap: 12px; min-height: calc(100vh - 140px); }
+.pv-studio-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; }
+.pv-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.pv-grid { display: grid; grid-template-columns: 1fr 320px; gap: 12px; min-height: 520px; flex: 1; }
+.pv-map { position: relative; min-height: 420px; border: 1px solid var(--slate-200); border-radius: 14px; overflow: hidden; background: #0b1c14; }
+.pv-map .leaflet-container { height: 100%; width: 100%; background: #0b1c14; }
+.pv-search { position: absolute; z-index: 500; top: 10px; right: 10px; width: min(340px, calc(100% - 20px)); }
+.pv-hits { margin-top: 6px; background: #fff; border: 1px solid var(--slate-200); border-radius: 10px; max-height: 200px; overflow: auto; }
+.pv-hits button { display: block; width: 100%; text-align: left; background: #fff; border: 0; border-bottom: 1px solid var(--slate-100); padding: 8px 10px; font-size: 12px; cursor: pointer; }
+.pv-side { background: #fff; border: 1px solid var(--slate-200); border-radius: 14px; padding: 12px; overflow: auto; max-height: calc(100vh - 180px); }
+.pv-roof { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; background: var(--slate-50); border: 1px solid var(--slate-200); border-radius: 10px; padding: 8px 10px; margin: 6px 0; cursor: pointer; }
+.pv-roof.on { border-color: #f59e0b; }
+.pv-roof span { font-size: 11px; color: var(--slate-500); }
+.pv-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+.pv-kv { display: flex; justify-content: space-between; font-size: 12px; padding: 6px 0; border-bottom: 1px solid var(--slate-100); }
+.pv-bars { display: flex; align-items: flex-end; gap: 3px; height: 72px; margin: 10px 0 4px; }
+.pv-bar { flex: 1; background: linear-gradient(180deg, #43b649, #1578c8); border-radius: 3px 3px 0 0; min-height: 4px; }
+.pv-bar-labels { display: flex; gap: 3px; font-size: 9px; color: var(--slate-400); }
+.pv-bar-labels span { flex: 1; text-align: center; }
+.pv-loss { display: grid; grid-template-columns: 90px 1fr 40px; gap: 8px; align-items: center; font-size: 12px; margin: 6px 0; }
+.pv-track { height: 8px; background: var(--slate-100); border-radius: 99px; overflow: hidden; }
+.pv-track > div { height: 100%; background: #f59e0b; }
+@media (max-width: 960px) {
+  .pv-grid { grid-template-columns: 1fr; }
+  .pv-side { max-height: none; }
+}
