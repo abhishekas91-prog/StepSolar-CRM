@@ -59,6 +59,7 @@ from lead_service import (
     send_lead_email,
     sheets_enabled,
 )
+from solar_engine import INVERTER_CATALOG, PANEL_CATALOG, simulate as simulate_design
 from services.pdf_docs import generate_document_pdf
 from services.whatsapp_service import (
     WHATSAPP_EVENTS,
@@ -95,6 +96,7 @@ documents_collection = db["documents"]
 whatsapp_logs_collection = db["whatsapp_logs"]
 inventory_collection = db["inventory"]
 settings_collection = db["settings"]
+designs_collection = db["pv_designs"]
 
 
 # --------------------------------------------------------------------------- #
@@ -2282,6 +2284,289 @@ async def crm_roi_calculator(payload: ROICalc, user: CurrentUser = Depends(get_c
 
 
 # --------------------------------------------------------------------------- #
+# Remote PV design studio (Aurora / HelioScope-class layout + energy)
+# Additive — does not change existing /crm/leads request/response shapes.
+# --------------------------------------------------------------------------- #
+class GeoPoint(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    lat: float
+    lng: float
+
+
+class DesignRoof(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(..., min_length=1, max_length=80)
+    name: Optional[str] = Field(default="Roof", max_length=120)
+    tilt: float = Field(default=18, ge=0, le=60)
+    azimuth: float = Field(default=180, ge=0, le=360)
+    setback_m: float = Field(default=0.4, ge=0, le=5)
+    row_gap_m: float = Field(default=0.02, ge=0, le=5)
+    col_gap_m: float = Field(default=0.02, ge=0, le=5)
+    orientation: str = Field(default="portrait")
+    points: List[GeoPoint] = Field(default_factory=list)
+
+
+class DesignObstruction(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(..., min_length=1, max_length=80)
+    type: str = Field(default="tree", max_length=40)
+    height_m: float = Field(default=8, ge=0, le=80)
+    lat: float
+    lng: float
+
+
+class DesignLocation(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    lat: float = 25.61
+    lng: float = 85.14
+    zoom: Optional[float] = 19
+
+
+class PvDesignUpsert(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    lead_id: Optional[str] = Field(default=None, max_length=80)
+    name: Optional[str] = Field(default=None, max_length=200)
+    address: Optional[str] = Field(default=None, max_length=500)
+    location: Optional[DesignLocation] = None
+    panel_id: Optional[str] = Field(default="mod-540", max_length=40)
+    roofs: Optional[List[DesignRoof]] = None
+    obstructions: Optional[List[DesignObstruction]] = None
+    tariff: Optional[float] = Field(default=None, ge=0, le=50)
+    tariff_escalation: Optional[float] = Field(default=None, ge=0, le=0.2)
+    export_tariff: Optional[float] = Field(default=None, ge=0, le=50)
+    annual_bill_kwh: Optional[float] = Field(default=None, ge=0, le=10_000_000)
+    self_consumption: Optional[float] = Field(default=None, ge=0, le=1)
+    subsidy_pct: Optional[float] = Field(default=None, ge=0, le=1)
+    epc_cost_per_w: Optional[float] = Field(default=None, ge=0, le=200)
+    module_cost_per_w: Optional[float] = Field(default=None, ge=0, le=100)
+    soiling_loss: Optional[float] = Field(default=None, ge=0, le=0.2)
+    notes: Optional[str] = Field(default=None, max_length=4000)
+    survey: Optional[Dict[str, Any]] = None
+
+
+def _design_public(doc: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+def _empty_design(lead: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    now = datetime.now(timezone.utc).isoformat()
+    loc = {"lat": 25.5941, "lng": 85.1376, "zoom": 19}
+    name = "Untitled site"
+    address = ""
+    lead_id = None
+    annual = 7200.0
+    tariff = 8.5
+    if lead:
+        lead_id = lead.get("id")
+        name = f"{lead.get('full_name') or lead.get('code') or 'Lead'} rooftop"
+        address = lead.get("address") or ", ".join(
+            [x for x in [lead.get("city"), lead.get("state"), lead.get("pincode")] if x]
+        )
+        bill = float(lead.get("monthly_bill") or 0)
+        if bill:
+            annual = bill * 12 / 8.5
+        survey = lead.get("site_survey") or {}
+        if survey.get("address"):
+            address = survey["address"]
+    return {
+        "id": str(uuid.uuid4()),
+        "lead_id": lead_id,
+        "name": name,
+        "address": address,
+        "location": loc,
+        "panel_id": "mod-540",
+        "roofs": [],
+        "obstructions": [],
+        "tariff": tariff,
+        "tariff_escalation": 0.04,
+        "export_tariff": 4.0,
+        "annual_bill_kwh": round(annual, 0),
+        "self_consumption": 0.7,
+        "subsidy_pct": 0.0,
+        "epc_cost_per_w": 44.0,
+        "module_cost_per_w": 18.0,
+        "soiling_loss": 0.03,
+        "currency": "INR",
+        "notes": "",
+        "survey": {},
+        "result": None,
+        "status": "draft",
+        "created_at": now,
+        "updated_at": now,
+        "updated_by": None,
+    }
+
+
+@crm.get("/design/catalog")
+async def crm_design_catalog(user: CurrentUser = Depends(get_current_user)):
+    return {"panels": PANEL_CATALOG, "inverters": INVERTER_CATALOG}
+
+
+@crm.get("/designs")
+async def crm_list_designs(
+    lead_id: Optional[str] = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    user: CurrentUser = Depends(get_current_user),
+):
+    query: Dict[str, Any] = {}
+    if lead_id:
+        query["lead_id"] = lead_id
+    cursor = designs_collection.find(query, {"_id": 0}).sort("updated_at", -1).limit(limit)
+    return await cursor.to_list(length=limit)
+
+
+@crm.get("/designs/{design_id}")
+async def crm_get_design(design_id: str, user: CurrentUser = Depends(get_current_user)):
+    doc = await designs_collection.find_one({"id": design_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Design not found")
+    return doc
+
+
+@crm.get("/leads/{lead_id}/design")
+async def crm_get_lead_design(lead_id: str, user: CurrentUser = Depends(get_current_user)):
+    lead = await _get_lead_or_404(lead_id)
+    doc = await designs_collection.find_one({"lead_id": lead_id}, {"_id": 0}, sort=[("updated_at", -1)])
+    if doc:
+        return doc
+    return _empty_design(lead)
+
+
+@crm.post("/designs")
+async def crm_create_design(payload: PvDesignUpsert, user: CurrentUser = Depends(get_current_user)):
+    lead = None
+    if payload.lead_id:
+        lead = await _get_lead_or_404(payload.lead_id)
+    doc = _empty_design(lead)
+    data = payload.model_dump(exclude_unset=True)
+    if data.get("location"):
+        data["location"] = payload.location.model_dump() if payload.location else data["location"]
+    if data.get("roofs") is not None:
+        data["roofs"] = [r.model_dump() for r in (payload.roofs or [])]
+    if data.get("obstructions") is not None:
+        data["obstructions"] = [o.model_dump() for o in (payload.obstructions or [])]
+    doc.update({k: v for k, v in data.items() if v is not None or k in {"roofs", "obstructions"}})
+    doc["updated_by"] = user.full_name or user.email
+    await designs_collection.insert_one(doc)
+    if payload.lead_id:
+        await _push_activity(payload.lead_id, user, "design.created", "Remote PV design created")
+    return _design_public(doc)
+
+
+@crm.put("/designs/{design_id}")
+async def crm_save_design(
+    design_id: str,
+    payload: PvDesignUpsert,
+    user: CurrentUser = Depends(get_current_user),
+):
+    existing = await designs_collection.find_one({"id": design_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Design not found")
+    data = payload.model_dump(exclude_unset=True)
+    if payload.location is not None:
+        data["location"] = payload.location.model_dump()
+    if payload.roofs is not None:
+        data["roofs"] = [r.model_dump() for r in payload.roofs]
+    if payload.obstructions is not None:
+        data["obstructions"] = [o.model_dump() for o in payload.obstructions]
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    data["updated_by"] = user.full_name or user.email
+    result = await designs_collection.find_one_and_update(
+        {"id": design_id},
+        {"$set": data},
+        return_document=ReturnDocument.AFTER,
+        projection={"_id": 0},
+    )
+    return result
+
+
+@crm.post("/designs/{design_id}/simulate")
+async def crm_simulate_design(
+    design_id: str,
+    payload: Optional[PvDesignUpsert] = None,
+    user: CurrentUser = Depends(get_current_user),
+):
+    existing = await designs_collection.find_one({"id": design_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Design not found")
+    merged = dict(existing)
+    if payload is not None:
+        data = payload.model_dump(exclude_unset=True)
+        if payload.location is not None:
+            data["location"] = payload.location.model_dump()
+        if payload.roofs is not None:
+            data["roofs"] = [r.model_dump() for r in payload.roofs]
+        if payload.obstructions is not None:
+            data["obstructions"] = [o.model_dump() for o in payload.obstructions]
+        merged.update(data)
+    result = simulate_design(merged)
+    now = datetime.now(timezone.utc).isoformat()
+    merged["result"] = result
+    merged["status"] = "simulated"
+    merged["updated_at"] = now
+    merged["updated_by"] = user.full_name or user.email
+    await designs_collection.replace_one({"id": design_id}, {k: v for k, v in merged.items() if k != "_id"})
+    lead_id = merged.get("lead_id")
+    if lead_id:
+        sys = result.get("system") or {}
+        prod = result.get("production") or {}
+        await leads_collection.update_one(
+            {"id": lead_id},
+            {"$set": {
+                "solar.proposed_size_kw": sys.get("dc_kw"),
+                "solar.usable_area_sqft": round((sys.get("roof_area_m2") or 0) * 10.764, 1),
+                "pv_design_id": design_id,
+                "pv_design_summary": {
+                    "dc_kw": sys.get("dc_kw"),
+                    "panel_count": sys.get("panel_count"),
+                    "year1_kwh": prod.get("year1_kwh"),
+                    "specific_yield": prod.get("specific_yield"),
+                    "payback_years": (result.get("financials") or {}).get("payback_years"),
+                },
+                "updated_at": now,
+            }},
+        )
+        await _push_activity(
+            lead_id,
+            user,
+            "design.simulated",
+            f"PV design {sys.get('dc_kw')} kWp · {prod.get('year1_kwh')} kWh/yr",
+        )
+    return {"design": _design_public(merged), "result": result}
+
+
+@crm.post("/leads/{lead_id}/design/simulate")
+async def crm_simulate_lead_design(
+    lead_id: str,
+    payload: Optional[PvDesignUpsert] = None,
+    user: CurrentUser = Depends(get_current_user),
+):
+    lead = await _get_lead_or_404(lead_id)
+    existing = await designs_collection.find_one({"lead_id": lead_id}, sort=[("updated_at", -1)])
+    if not existing:
+        existing = _empty_design(lead)
+        await designs_collection.insert_one(existing)
+    return await crm_simulate_design(existing["id"], payload, user)
+
+
+@crm.post("/design/geocode")
+async def crm_design_geocode(payload: Dict[str, Any], user: CurrentUser = Depends(get_current_user)):
+    q = str((payload or {}).get("q") or "").strip()
+    if not q:
+        return []
+    try:
+        import urllib.parse
+        import urllib.request
+        url = "https://nominatim.openstreetmap.org/search?format=json&limit=6&q=" + urllib.parse.quote(q)
+        req = urllib.request.Request(url, headers={"User-Agent": "StepSolar-CRM/1.0 (pv design studio)"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return [{"label": d.get("display_name"), "lat": float(d["lat"]), "lng": float(d["lon"])} for d in (data or [])]
+    except Exception:
+        return []
+
+
+# --------------------------------------------------------------------------- #
 # WhatsApp delivery logs (Admin)
 # --------------------------------------------------------------------------- #
 @crm.get("/whatsapp/logs")
@@ -3086,6 +3371,8 @@ async def _startup():
     await whatsapp_logs_collection.create_index("status")
     await inventory_collection.create_index([("lead_id", 1), ("created_at", -1)])
     await inventory_collection.create_index("serial", sparse=True)
+    await designs_collection.create_index("id", unique=True)
+    await designs_collection.create_index([("lead_id", 1), ("updated_at", -1)])
     await _seed_default_admin()
     await _migrate_legacy_leads()
     set_runtime_config(await _load_whatsapp_settings())

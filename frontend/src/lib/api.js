@@ -111,6 +111,15 @@ export const api = {
   saveSolar: (id, data) => request(`/crm/leads/${id}/solar`, { method: 'POST', body: data }),
   roi: (data) => request('/crm/solar/roi', { method: 'POST', body: data }),
 
+  designCatalog: () => request('/crm/design/catalog'),
+  designs: (leadId) => request(leadId ? `/crm/designs?lead_id=${encodeURIComponent(leadId)}` : '/crm/designs'),
+  getDesign: (id) => request(`/crm/designs/${id}`),
+  leadDesign: (leadId) => request(`/crm/leads/${leadId}/design`),
+  createDesign: (data) => request('/crm/designs', { method: 'POST', body: data }),
+  saveDesign: (id, data) => request(`/crm/designs/${id}`, { method: 'PUT', body: data }),
+  simulateDesign: (id, data) => request(`/crm/designs/${id}/simulate`, { method: 'POST', body: data || {} }),
+  geocodeDesign: (q) => request('/crm/design/geocode', { method: 'POST', body: { q } }),
+
   inventory: () => request('/crm/inventory'),
   whatsappLogs: () => request('/crm/whatsapp/logs'),
   whatsappConfig: () => request('/crm/whatsapp/config'),

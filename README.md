@@ -60,6 +60,20 @@ The build entry is `crm.html` (see `vite.config.js`). The dev server proxies
 - Frontend: any static host that builds `frontend/` and serves `dist/`
   (e.g. Netlify — see the monorepo `netlify.toml` for the original proxy rules).
 
+## Remote PV design (Aurora / HelioScope-class)
+
+CRM nav **PV Design** opens a satellite studio: search address, trace roof faces, auto-fill modules, simulate energy / strings / BOM / IRR. Linked from a lead via **PV Design Studio**. Designs live in Mongo `pv_designs` and optionally write `solar.proposed_size_kw` back onto the lead.
+
+Field app (`step_solar_field`) uses the same APIs with GPS + roof length/width instead of map tracing. See `API_CONTRACT.md`.
+
+```
+GET  /api/crm/design/catalog
+GET  /api/crm/designs?lead_id=
+POST /api/crm/designs
+PUT  /api/crm/designs/{id}
+POST /api/crm/designs/{id}/simulate
+```
+
 ## Tests
 
 ```bash

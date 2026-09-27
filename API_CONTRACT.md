@@ -45,6 +45,23 @@ any backend schema change:
 The CRM web frontend's "Field Updates" tab (`LeadProfile.jsx`) reads this
 same field to show GPS + notes + photo count per stage.
 
+## Remote PV design (additive — field + CRM)
+
+These endpoints are **new**. Existing `/crm/leads*` shapes are unchanged. Optional fields written back onto the lead (`solar.proposed_size_kw`, `pv_design_id`, `pv_design_summary`) are additive.
+
+| Endpoint | Used for | Notes |
+|---|---|---|
+| `GET /crm/design/catalog` | Module + inverter library | `{panels, inverters}` |
+| `GET /crm/designs?lead_id=` | List designs | Newest first |
+| `GET /crm/designs/{id}` | Load a design | Full roof polygons + last `result` |
+| `GET /crm/leads/{id}/design` | Latest design for a lead | Empty draft if none yet |
+| `POST /crm/designs` | Create | body may include `lead_id`, `location`, `roofs[]`, finance inputs |
+| `PUT /crm/designs/{id}` | Autosave layout | Partial upsert |
+| `POST /crm/designs/{id}/simulate` | Auto-fill modules + energy + IRR | Returns `{design, result}`. Also patches lead `solar.proposed_size_kw` |
+| `POST /crm/design/geocode` | Address search | body `{q}` → `[{label, lat, lng}]` |
+
+Roof object: `{id, name, tilt, azimuth, setback_m, orientation, points:[{lat,lng}]}`.
+
 ## Versioning
 
 No formal API version header yet (single backend, single app, one
