@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { MapContainer, Polygon, TileLayer, useMap, useMapEvents, CircleMarker, Tooltip } from 'react-leaflet';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from 'recharts';
 import 'leaflet/dist/leaflet.css';
 import { api } from '../lib/api';
-import { formatINR } from '../lib/format';
+import { formatINR, timeAgo } from '../lib/format';
 import { Card, Badge, useToast } from '../components/ui';
 import { useStore } from '../lib/store';
+import Design3DView from '../components/Design3DView';
+import { accessColor, dayOfYear } from '../lib/sun';
 import '../design-studio.css';
 
 function Recenter({ center, zoom }) {
@@ -59,6 +62,14 @@ export default function DesignStudio() {
   const [hits, setHits] = useState([]);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
+  const [viewMode, setViewMode] = useState('2d');
+  const [layer, setLayer] = useState('esri');
+  const [heatmapOn, setHeatmapOn] = useState(false);
+  const [sunOn, setSunOn] = useState(false);
+  const [day, setDay] = useState(dayOfYear(new Date()));
+  const [hour, setHour] = useState(12);
+  const [generation, setGeneration] = useState(null);
+  const [irradiance, setIrradiance] = useState(null);
   const saveTimer = useRef(null);
 
   useEffect(() => {
@@ -85,6 +96,8 @@ export default function DesignStudio() {
         if (cancelled || !d) return;
         setDesign(d);
         setResult(d.result || null);
+        setGeneration(d.generation || null);
+        setIrradiance(d.irradiance || null);
         setActiveRoof(d.roofs?.[0]?.id || null);
         setQ(d.address || '');
         if (d.id && id !== d.id) nav(`/design/${d.id}${leadId ? `?lead=${leadId}` : ''}`, { replace: true });
@@ -152,6 +165,48 @@ export default function DesignStudio() {
     }
   };
 
+  const runGenerate = async () => {
+    if (!design?.id) return;
+    setBusy(true);
+    try {
+      await api.saveDesign(design.id, design);
+      if (!result) {
+        const r = await api.simulateDesign(design.id, design);
+        setDesign(r.design);
+        setResult(r.result);
+      }
+      const g = await api.generateDesign(design.id, {});
+      setDesign(g.design);
+      setGeneration(g.generation);
+      setTab('energy');
+      toast(`Generation ${g.generation?.annual_mwh || 0} MWh/yr`);
+    } catch (e) {
+      toast(e.message || 'Generation failed', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runIrradiance = async (on) => {
+    setHeatmapOn(on);
+    if (!on || !design?.id) return;
+    if (irradiance?.cells?.length) return;
+    setBusy(true);
+    try {
+      const irr = await api.designIrradiance(design.id);
+      setIrradiance(irr);
+      setDesign((d) => ({ ...d, irradiance: irr }));
+    } catch (e) {
+      toast(e.message || 'Irradiance failed', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const tileUrl = layer === 'google'
+    ? 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
+    : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
   const roof = (design?.roofs || []).find((r) => r.id === activeRoof);
   const center = useMemo(() => {
     if (!design?.location) return [25.5941, 85.1376];
@@ -165,6 +220,15 @@ export default function DesignStudio() {
   const sys = result?.system;
   const prod = result?.production;
   const fin = result?.financials;
+  const gen = generation;
+  const show2d = viewMode === '2d' || viewMode === 'dual';
+  const show3d = viewMode === '3d' || viewMode === 'dual' || layer === 'google3d';
+  const mapClass = viewMode === 'dual' ? 'pv-map dual-left' : 'pv-map';
+  const chartData = (gen?.months || []).map((m, i) => ({
+    month: m,
+    gen: Number(gen?.monthly_kwh?.[i] || 0),
+    load: Number((design.annual_bill_kwh || 7200) / 12),
+  }));
 
   return (
     <div className="pv-studio">
@@ -178,13 +242,47 @@ export default function DesignStudio() {
           <button className={`btn btn-sm ${mode === 'roof' ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setMode('roof'); setDraft([]); }}>Trace roof</button>
           {mode === 'roof' && draft.length >= 3 && <button className="btn btn-sm btn-primary" onClick={closeRoof}>Close polygon</button>}
           <button className={`btn btn-sm ${mode === 'obs' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setMode('obs')}>Obstruction</button>
-          <button className="btn btn-sm btn-primary" disabled={busy} onClick={runSim}>{busy ? 'Running…' : 'Simulate'}</button>
+          <button className="btn btn-sm btn-outline" disabled={busy} onClick={runSim}>{busy ? 'Running…' : 'Simulate'}</button>
+          <button className="btn btn-sm btn-primary" disabled={busy} onClick={runGenerate}>{busy ? 'Calculating…' : 'Calculate Generation'}</button>
+          <button className="btn btn-sm btn-outline" onClick={() => nav(`/documentProposal/${design.id}`)}>Proposal</button>
+          {design.solar_project_id && <button className="btn btn-sm btn-outline" onClick={() => nav(`/pv-projects/${design.solar_project_id}`)}>Project</button>}
           {leadId && <button className="btn btn-sm btn-outline" onClick={() => nav(`/leads/${leadId}`)}>Back to lead</button>}
         </div>
       </div>
 
-      <div className="pv-grid">
-        <div className="pv-map">
+      <div className="pv-toolbar">
+        <button className={`btn btn-sm ${viewMode === '2d' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setViewMode('2d')}>2D</button>
+        <button className={`btn btn-sm ${viewMode === '3d' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setViewMode('3d')}>3D</button>
+        <button className={`btn btn-sm ${viewMode === 'dual' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setViewMode('dual')}>Dual Map</button>
+        <select className="select" style={{ width: 170 }} value={layer} onChange={(e) => {
+          const v = e.target.value;
+          setLayer(v);
+          if (v === 'google3d') setViewMode((m) => (m === '2d' ? 'dual' : m));
+        }}>
+          <option value="esri">Esri satellite</option>
+          <option value="google">Google</option>
+          <option value="google3d">GoogleSolar3D</option>
+        </select>
+        <button className={`btn btn-sm ${heatmapOn ? 'btn-primary' : 'btn-outline'}`} onClick={() => runIrradiance(!heatmapOn)}>Irradiance Map</button>
+        <button className={`btn btn-sm ${sunOn ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setSunOn((s) => !s); if (viewMode === '2d') setViewMode('3d'); }}>Sun Path</button>
+        {sunOn && (
+          <>
+            <label className="cell-sub">Day <input className="range" type="range" min="1" max="365" value={day} onChange={(e) => setDay(Number(e.target.value))} /></label>
+            <label className="cell-sub">Hour <input className="range" type="range" min="6" max="18" step="0.25" value={hour} onChange={(e) => setHour(Number(e.target.value))} /></label>
+          </>
+        )}
+        {heatmapOn && (
+          <div className="pv-legend" title="Solar access">
+            <span>0.7</span>
+            <div />
+            <span>1.0</span>
+          </div>
+        )}
+      </div>
+
+      <div className={`pv-grid ${viewMode === 'dual' || (show2d && show3d) ? 'pv-grid-dual' : ''}`}>
+        {show2d && (
+        <div className={mapClass}>
           <div className="pv-search">
             <input
               className="input"
@@ -217,12 +315,12 @@ export default function DesignStudio() {
             )}
           </div>
           <MapContainer center={center} zoom={design.location?.zoom || 19} maxZoom={21} style={{ height: '100%', width: '100%' }}>
-            <TileLayer
-              attribution="&copy; Esri"
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              maxNativeZoom={19}
-              maxZoom={21}
-            />
+              <TileLayer
+                attribution={layer === 'google' ? 'Google' : 'Esri'}
+                url={tileUrl}
+                maxNativeZoom={19}
+                maxZoom={21}
+              />
             <Recenter center={center} zoom={design.location?.zoom || 19} />
             <DrawLayer mode={mode} onPoint={onPoint} />
             {(design.roofs || []).map((r) => (
@@ -247,8 +345,37 @@ export default function DesignStudio() {
               </CircleMarker>
             ))}
             {(result?.layouts || []).flatMap((l) => (l.panels || []).map((p) => <PanelPoly key={p.id} p={p} />))}
+            {heatmapOn && (irradiance?.cells || []).filter((c) => c.lat != null).map((c, i) => {
+              const rgb = accessColor(c.solar_access);
+              return (
+                <CircleMarker
+                  key={`irr-${i}`}
+                  center={[c.lat, c.lng]}
+                  radius={10}
+                  pathOptions={{ color: `rgb(${Math.round(rgb[0] * 255)},${Math.round(rgb[1] * 255)},${Math.round(rgb[2] * 255)})`, fillOpacity: 0.55, weight: 0 }}
+                />
+              );
+            })}
           </MapContainer>
         </div>
+        )}
+        {show3d && (
+          <div className="pv-map pv-3d">
+            <Design3DView
+              design={design}
+              result={result}
+              irradiance={irradiance}
+              heatmapOn={heatmapOn}
+              sunOn={sunOn}
+              day={day}
+              hour={hour}
+              zoom={design.location?.zoom || 19}
+              onOrbit={() => {
+                if (viewMode === '2d') setViewMode('dual');
+              }}
+            />
+          </div>
+        )}
 
         <aside className="pv-side">
           <div className="tabs" style={{ marginBottom: 12 }}>
@@ -305,29 +432,45 @@ export default function DesignStudio() {
           )}
 
           {tab === 'energy' && (
-            !prod ? <p className="muted">Trace a roof, then Simulate.</p> : (
-              <>
-                <Row k="Year-1" v={`${num(prod.year1_kwh)} kWh`} />
-                <Row k="Specific yield" v={`${prod.specific_yield} kWh/kWp`} />
-                <Row k="PR" v={`${result.losses.pr}%`} />
-                <Row k="GHI" v={`${result.climate.ghi_annual} kWh/m²`} />
-                <Row k="CO₂ avoided" v={`${prod.co2_tons_year} t/yr`} />
-                <div className="pv-bars">
-                  {prod.monthly_kwh.map((v, i) => (
-                    <div key={prod.months[i]} className="pv-bar" style={{ height: `${(v / Math.max(...prod.monthly_kwh)) * 100}%` }} title={`${prod.months[i]} ${v}`} />
-                  ))}
+            <>
+              <div className="pv-home">
+                <div className="pv-home-h">Home Summary</div>
+                {gen?.generated_at && <div className="cell-sub">Last updated {timeAgo(gen.generated_at)}</div>}
+                <Row k="Annual Generation" v={gen ? `${gen.annual_mwh} MWh` : '—'} />
+                <Row k="Spec Gen" v={gen ? `${gen.spec_gen} kWh/kWp/yr` : '—'} />
+                <Row k="Performance Ratio" v={gen ? `${gen.performance_ratio}%` : '—'} />
+                <Row k="Energy Offset" v={gen ? `${gen.energy_offset_pct}%` : '—'} />
+                <Row k="Source" v={gen?.source || '—'} />
+              </div>
+              {gen && (
+                <div style={{ height: 170, margin: '8px 0 12px' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="month" fontSize={10} />
+                      <YAxis fontSize={10} />
+                      <RTooltip />
+                      <Bar dataKey="gen" fill="#15803d" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="load" fill="#94a3b8" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-                <div className="pv-bar-labels">{prod.months.map((m) => <span key={m}>{m[0]}</span>)}</div>
-                <h4>Loss tree</h4>
-                {Object.entries(result.losses).filter(([k]) => k !== 'pr').map(([k, v]) => (
-                  <div className="pv-loss" key={k}>
-                    <span>{k}</span>
-                    <div className="pv-track"><div style={{ width: `${Math.min(v * 4, 100)}%` }} /></div>
-                    <span>{v}%</span>
-                  </div>
-                ))}
-              </>
-            )
+              )}
+              {!prod && !gen ? <p className="muted">Trace a roof, then Calculate Generation.</p> : prod && (
+                <>
+                  <Row k="Year-1 (layout)" v={`${num(prod.year1_kwh)} kWh`} />
+                  <Row k="GHI" v={`${result.climate.ghi_annual} kWh/m²`} />
+                  <h4>Loss tree</h4>
+                  {Object.entries(result.losses || {}).filter(([k]) => k !== 'pr').map(([k, v]) => (
+                    <div className="pv-loss" key={k}>
+                      <span>{k}</span>
+                      <div className="pv-track"><div style={{ width: `${Math.min(v * 4, 100)}%` }} /></div>
+                      <span>{v}%</span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </>
           )}
 
           {tab === 'electrical' && result && (

@@ -18,6 +18,9 @@ import Billing from './pages/Billing';
 import ServiceDesk from './pages/ServiceDesk';
 import MasterConfig from './pages/MasterConfig';
 import DesignStudio from './pages/DesignStudio';
+import SolarProjects from './pages/SolarProjects';
+import SolarProjectSummary from './pages/SolarProjectSummary';
+import DocumentProposal, { PublicProposal } from './pages/DocumentProposal';
 
 function Boot() {
   useEffect(() => {
@@ -38,6 +41,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Boot />
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/p/:token" element={<PublicProposal />} />
           <Route
             element={
               <RequireAuth>
@@ -57,6 +61,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             <Route path="/master-config" element={<MasterConfig />} />
             <Route path="/design" element={<DesignStudio />} />
             <Route path="/design/:id" element={<DesignStudio />} />
+            <Route path="/documentProposal/:designId" element={<DocumentProposal />} />
+            <Route path="/pv-projects" element={<SolarProjects />} />
+            <Route path="/pv-projects/:id" element={<SolarProjectSummary />} />
           </Route>
         </Routes>
       </ToastProvider>

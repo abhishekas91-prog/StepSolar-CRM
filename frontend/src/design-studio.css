@@ -20,7 +20,19 @@
 .pv-loss { display: grid; grid-template-columns: 90px 1fr 40px; gap: 8px; align-items: center; font-size: 12px; margin: 6px 0; }
 .pv-track { height: 8px; background: var(--slate-100); border-radius: 99px; overflow: hidden; }
 .pv-track > div { height: 100%; background: #f59e0b; }
+.pv-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pv-toolbar .cell-sub { display: flex; align-items: center; gap: 6px; }
+.pv-toolbar .range { width: 110px; }
+.pv-grid-dual { grid-template-columns: 1fr 1fr 320px; }
+.pv-map.dual-left { min-height: 420px; }
+.pv-3d { background: #cfe8ff; min-height: 420px; }
+.pv-3d canvas { display: block; width: 100%; height: 100%; }
+.pv-legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--slate-500); }
+.pv-legend > div { width: 88px; height: 8px; border-radius: 99px; background: linear-gradient(90deg, #ff730d, #d9d916, #37e637); }
+.pv-home { border: 1px solid var(--slate-200); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+.pv-home-h { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
 @media (max-width: 960px) {
   .pv-grid { grid-template-columns: 1fr; }
+  .pv-grid-dual { grid-template-columns: 1fr; }
   .pv-side { max-height: none; }
 }
