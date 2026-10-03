@@ -19,9 +19,13 @@ export default function MasterConfig() {
       <div className="tabs" style={{ marginBottom: 18 }}>
         <button className={`tab ${tab === 'whatsapp' ? 'active' : ''}`} onClick={() => setTab('whatsapp')}>WhatsApp API</button>
         <button className={`tab ${tab === 'agents' ? 'active' : ''}`} onClick={() => setTab('agents')}>Agents</button>
+        <button className={`tab ${tab === 'defaults' ? 'active' : ''}`} onClick={() => setTab('defaults')}>Design Defaults</button>
+        <button className={`tab ${tab === 'subsidy' ? 'active' : ''}`} onClick={() => setTab('subsidy')}>PM Surya Ghar</button>
       </div>
       {tab === 'whatsapp' && <WhatsAppPanel toast={toast} />}
       {tab === 'agents' && <AgentsPanel toast={toast} />}
+      {tab === 'defaults' && <DefaultsPanel toast={toast} />}
+      {tab === 'subsidy' && <SubsidyPanel toast={toast} />}
     </div>
   );
 }
@@ -238,6 +242,117 @@ function AgentsPanel({ toast }) {
         </div>
         <div className="field"><label>Temporary password</label><input className="input" type="text" value={draft.temp_password} onChange={(e) => setDraft((d) => ({ ...d, temp_password: e.target.value }))} /></div>
       </Modal>
+    </Card>
+  );
+}
+
+function DefaultsPanel({ toast }) {
+  const [rows, setRows] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState({
+    name: '',
+    panel_id: 'mod-540',
+    tilt: 18,
+    azimuth: 180,
+    setback_m: 0.4,
+    soiling_loss: 0.03,
+    orientation: 'portrait',
+  });
+
+  const load = () => api.defaultsProfiles().then(setRows).catch((e) => toast(e.message, 'error'));
+  useEffect(() => { load(); }, []);
+
+  async function save() {
+    setBusy(true);
+    try {
+      await api.createDefaultsProfile(draft);
+      toast('Defaults profile saved');
+      setOpen(false);
+      load();
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card title="Design default profiles" subtitle="Applied when a new rooftop design is created" action={<button className="btn btn-primary btn-sm" onClick={() => setOpen(true)}><Icon name="plus" size={14} /> New profile</button>}>
+      <div className="table-wrap">
+        <table className="data">
+          <thead><tr><th>Name</th><th>Module</th><th>Tilt</th><th>Azimuth</th><th>Setback</th><th>Soiling</th></tr></thead>
+          <tbody>
+            {rows.map((p) => (
+              <tr key={p.id || p.name}>
+                <td className="cell-main">{p.name}</td>
+                <td>{p.panel_id}</td>
+                <td>{p.tilt}°</td>
+                <td>{p.azimuth}°</td>
+                <td>{p.setback_m} m</td>
+                <td>{Math.round((p.soiling_loss || 0) * 100)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Modal open={open} onClose={() => setOpen(false)} title="Defaults profile" footer={
+        <>
+          <button className="btn btn-outline" onClick={() => setOpen(false)}>Cancel</button>
+          <button className="btn btn-primary" disabled={busy || !draft.name} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+        </>
+      }>
+        <div className="form-grid">
+          <div className="field"><label>Name</label><input className="input" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} /></div>
+          <div className="field"><label>Module id</label><input className="input" value={draft.panel_id} onChange={(e) => setDraft((d) => ({ ...d, panel_id: e.target.value }))} /></div>
+          <div className="field"><label>Tilt</label><input className="input" type="number" value={draft.tilt} onChange={(e) => setDraft((d) => ({ ...d, tilt: Number(e.target.value) }))} /></div>
+          <div className="field"><label>Azimuth</label><input className="input" type="number" value={draft.azimuth} onChange={(e) => setDraft((d) => ({ ...d, azimuth: Number(e.target.value) }))} /></div>
+          <div className="field"><label>Setback m</label><input className="input" type="number" step="0.1" value={draft.setback_m} onChange={(e) => setDraft((d) => ({ ...d, setback_m: Number(e.target.value) }))} /></div>
+          <div className="field"><label>Soiling (0–1)</label><input className="input" type="number" step="0.01" value={draft.soiling_loss} onChange={(e) => setDraft((d) => ({ ...d, soiling_loss: Number(e.target.value) }))} /></div>
+        </div>
+      </Modal>
+    </Card>
+  );
+}
+
+function SubsidyPanel({ toast }) {
+  const [form, setForm] = useState({
+    name: 'PM Surya Ghar',
+    residential_slab_1_kw: 2,
+    residential_slab_1_inr_per_kw: 30000,
+    residential_slab_2_inr_per_kw: 18000,
+    residential_max_inr: 78000,
+    commercial_inr: 0,
+  });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.subsidySettings().then((d) => setForm((f) => ({ ...f, ...d }))).catch((e) => toast(e.message, 'error'));
+  }, [toast]);
+
+  async function save() {
+    setBusy(true);
+    try {
+      const next = await api.saveSubsidySettings(form);
+      setForm((f) => ({ ...f, ...next }));
+      toast('Subsidy rates saved');
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card title="PM Surya Ghar rates" subtitle="Used by design proposals. Commercial defaults to 0." action={<button className="btn btn-primary btn-sm" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>}>
+      <div className="form-grid">
+        <div className="field"><label>Scheme name</label><input className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></div>
+        <div className="field"><label>First slab (kW)</label><input className="input" type="number" value={form.residential_slab_1_kw} onChange={(e) => setForm((f) => ({ ...f, residential_slab_1_kw: Number(e.target.value) }))} /></div>
+        <div className="field"><label>Rs / kW (first slab)</label><input className="input" type="number" value={form.residential_slab_1_inr_per_kw} onChange={(e) => setForm((f) => ({ ...f, residential_slab_1_inr_per_kw: Number(e.target.value) }))} /></div>
+        <div className="field"><label>Rs / kW (additional)</label><input className="input" type="number" value={form.residential_slab_2_inr_per_kw} onChange={(e) => setForm((f) => ({ ...f, residential_slab_2_inr_per_kw: Number(e.target.value) }))} /></div>
+        <div className="field"><label>Residential cap (Rs)</label><input className="input" type="number" value={form.residential_max_inr} onChange={(e) => setForm((f) => ({ ...f, residential_max_inr: Number(e.target.value) }))} /></div>
+        <div className="field"><label>Commercial (Rs)</label><input className="input" type="number" value={form.commercial_inr} onChange={(e) => setForm((f) => ({ ...f, commercial_inr: Number(e.target.value) }))} /></div>
+      </div>
     </Card>
   );
 }

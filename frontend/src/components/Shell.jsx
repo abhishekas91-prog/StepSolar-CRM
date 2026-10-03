@@ -12,7 +12,8 @@ const NAV = [
       { to: '/leads', label: 'Leads', icon: 'leads' },
       { to: '/survey', label: 'Site Surveys', icon: 'survey' },
       { to: '/proposal', label: 'Proposals', icon: 'proposal' },
-      { to: '/design', label: 'PV Design', icon: 'sun' },
+      { to: '/pv-projects', label: 'Design Projects', icon: 'sun' },
+      { to: '/design', label: 'PV Studio', icon: 'map' },
     ],
   },
   {
@@ -42,6 +43,8 @@ const TITLES = {
   '/service': { title: 'After-Sales & Field Desk', sub: 'Open tasks, dispatch & maintenance' },
   '/master-config': { title: 'Master Config', sub: 'WhatsApp Business API & agent accounts' },
   '/design': { title: 'Remote PV Design', sub: 'Satellite layout, energy, strings & bankability' },
+  '/pv-projects': { title: 'Design Projects', sub: 'Arka360-style rooftop sites, tariff & consumption' },
+  '/documentProposal': { title: 'Design Proposal', sub: 'Pricing, PM Surya Ghar subsidy, PDF & share' },
 };
 
 export default function Shell() {
@@ -59,7 +62,10 @@ export default function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const meta = TITLES[location.pathname] || (location.pathname.startsWith('/design') ? TITLES['/design'] : TITLES['/']);
+  const meta = TITLES[location.pathname]
+    || (location.pathname.startsWith('/pv-projects') ? TITLES['/pv-projects'] : null)
+    || (location.pathname.startsWith('/documentProposal') ? TITLES['/documentProposal'] : null)
+    || (location.pathname.startsWith('/design') ? TITLES['/design'] : TITLES['/']);
 
   const subsidyBadge = useMemo(() => leads.filter((l) => !l.allCompleted && ['discom_applied', 'net_metering_pending', 'subsidy_disbursed'].includes(l.currentStageKey)).length, [leads]);
   const serviceBadge = useMemo(() => leads.reduce((a, l) => a + (l.tasks || []).filter((t) => t.status !== 'done').length, 0), [leads]);

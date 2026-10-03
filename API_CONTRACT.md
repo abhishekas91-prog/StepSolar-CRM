@@ -58,9 +58,70 @@ These endpoints are **new**. Existing `/crm/leads*` shapes are unchanged. Option
 | `POST /crm/designs` | Create | body may include `lead_id`, `location`, `roofs[]`, finance inputs |
 | `PUT /crm/designs/{id}` | Autosave layout | Partial upsert |
 | `POST /crm/designs/{id}/simulate` | Auto-fill modules + energy + IRR | Returns `{design, result}`. Also patches lead `solar.proposed_size_kw` |
-| `POST /crm/design/geocode` | Address search | body `{q}` → `[{label, lat, lng}]` |
+| `POST /crm/designs/{id}/generate` | Annual generation (Phase 4) | body optional `{system_losses?, shading_factor?}`. Returns `{design, generation}`. Alias: `POST /api/design/designs/{id}/generate`. Sources: pvlib, then NREL PVWatts (`NREL_API_KEY` / `PVWATTS_API_KEY`), else climate. Default losses 14%, degradation 0.5%/yr, 25-year array. |
+| `POST /crm/designs/{id}/irradiance` | Roof solar-access heatmap | Returns `{solar_access, cells[], source, cache_key, cached}`. Google Solar (`GOOGLE_SOLAR_API_KEY` / `GOOGLE_MAPS_API_KEY`) with 14-day Mongo `irradiance_cache`; fallback shadow/pvlib clamped 0.7–1.0. |
+| `POST /crm/design/geocode` | Address search | body `{q}` → `[{label, lat, lng}]`. Nominatim (no Google Places). |
 
 Roof object: `{id, name, tilt, azimuth, setback_m, orientation, points:[{lat,lng}]}`.
+
+## Design Projects (additive — CRM only, Phase 1–2)
+
+Existing `/projects` ops page and `/crm/leads*` shapes are unchanged. New Mongo collections: `solar_projects`, `tariff_profiles`, `consumption_profiles`, `designs` (nested per project, not `pv_designs`), `defaults_profiles`.
+
+### Schema
+
+`solar_projects`: `{id, code (SPV-0001), name, address, location{lat,lng,zoom}, lead_id?, lead_code?, customer_name?, customer_phone?, monthly_bill?, status, notes, created_at, updated_at, created_by, updated_by}`
+
+`tariff_profiles`: `{project_id, mode: flat|tou, metering: net_metering|gross_metering|net_billing, price_per_kwh, escalation_rate (default 3.5), zero_export, export_only, tou_slots[{name,start,end,price_per_kwh}]}`
+
+`consumption_profiles`: `{project_id, type: monthly_avg|monthly_bill|interval_csv, current{monthly_kwh[12], daily_profile[24]}, future{...}}`
+
+`designs`: `{id, project_id, name, defaults_profile, defaults{}, status, created_at}`
+
+`defaults_profiles`: `{id, name (e.g. BD TEAM), panel_id, tilt, azimuth, setback_m, soiling_loss, orientation}` — Admin-editable.
+
+### Endpoints
+
+| Endpoint | Used for | Notes |
+|---|---|---|
+| `GET /crm/solar-projects` | List | query `q`, `lead_id`, `status` |
+| `POST /crm/solar-projects` | Create | body `{name, address, location, lead_id?}` → auto `SPV-####` |
+| `POST /crm/solar-projects/from-lead/{lead_id}` | Create from lead | Returns existing if one already linked |
+| `GET /crm/solar-projects/{id}` | Project summary bundle | `{project, tariff, consumption, designs}` |
+| `PATCH /crm/solar-projects/{id}` | Rename / move pin | |
+| `DELETE /crm/solar-projects/{id}` | Admin only | Also drops tariff, consumption, nested designs |
+| `GET/PUT /crm/solar-projects/{id}/tariff` | Utility rate | |
+| `GET/PUT /crm/solar-projects/{id}/consumption` | Load profile | |
+| `POST /crm/solar-projects/{id}/consumption/from-bill` | Bill se kWh | body `{monthly_bill_rs, price_per_kwh?, which}` |
+| `POST /crm/solar-projects/{id}/consumption/interval` | CSV/XLSX upload | multipart `file`, query `which=current\|future` |
+| `GET/POST /crm/solar-projects/{id}/designs` | Nested designs | POST `{name, defaults_profile}` |
+| `PATCH/DELETE /crm/solar-projects/{id}/designs/{design_id}` | Nested design | |
+| `GET /crm/defaults-profiles` | Defaults library | Seeds `BD TEAM` |
+| `POST/PUT/DELETE /crm/defaults-profiles` | Admin edit | |
+
+Nested `designs` POST also seeds a `pv_designs` row (`pv_design_id`) so the card opens `#/design/:pv_design_id`.
+
+CRM UI: `#/pv-projects` list + create modal (Nominatim + Esri satellite). `#/pv-projects/:id` summary (tariff, consumption, designs). Studio: Calculate Generation, Irradiance Map, 2D/3D/Dual, Sun Path. Ops `#/projects` untouched.
+
+## Design proposals (additive — CRM, Phase 5)
+
+Existing `/crm/leads*` and `/proposal` quotation pages are unchanged. New collections: `proposals`, `pricing_templates`. Subsidy rates live in `settings` id `pm_surya_ghar` (Admin-editable).
+
+`proposals`: `{id, design_id, lead_id?, solar_project_id?, pricing{items[], total, mode, template_id}, subsidy{scheme, amount, capped, breakdown[]}, finance{payback_years, irr, npv, cashflows[25], monthly_kwh[12], total_savings_25}, branding{logo, colors, sections_enabled}, financing{}, public_token, public_url, generated_at, warranty[], terms[], payment_schedule[]}`
+
+| Endpoint | Used for | Notes |
+|---|---|---|
+| `POST /crm/designs/{id}/proposal` | Generate | body optional `{template_id, items[], branding, financing, mark_pipeline}`. Seeds pricing template `epc-std` (Rs 44/W). Marks lead `quotation_sent` + activity `proposal.sent`. |
+| `GET /crm/designs/{id}/proposal` | Load latest | |
+| `PATCH /crm/designs/{id}/proposal` | Edit pricing / branding | Recalculates subsidy + 25-yr cashflow |
+| `GET /crm/designs/{id}/proposal.pdf` | A4 PDF (fpdf2) | Auth required |
+| `POST /crm/designs/{id}/proposal/share` | WhatsApp + pipeline | body `{}`. Uses existing QUOTATION_SENT notify. |
+| `GET /api/public/proposal/{token}` | Public read-only | No auth. `{proposal, design}` (roofs + 3D). |
+| `GET /api/public/proposal/{token}/pdf` | Public PDF | No auth |
+| `GET/PUT /crm/subsidy-settings` | PM Surya Ghar rates | PUT Admin. Default Rs 30,000/kW first 2 kW + Rs 18,000 third, cap Rs 78,000. Commercial 0. |
+| `GET/POST/PUT /crm/pricing-templates` | EPC BOM / INR-W | POST/PUT Admin |
+
+CRM UI: `#/documentProposal/:designId` (from studio **Proposal**). Public `#/p/:token`. Master Config tab **PM Surya Ghar**.
 
 ## Versioning
 

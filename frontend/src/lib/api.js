@@ -118,7 +118,50 @@ export const api = {
   createDesign: (data) => request('/crm/designs', { method: 'POST', body: data }),
   saveDesign: (id, data) => request(`/crm/designs/${id}`, { method: 'PUT', body: data }),
   simulateDesign: (id, data) => request(`/crm/designs/${id}/simulate`, { method: 'POST', body: data || {} }),
+  generateDesign: (id, data) => request(`/crm/designs/${id}/generate`, { method: 'POST', body: data || {} }),
+  designIrradiance: (id) => request(`/crm/designs/${id}/irradiance`, { method: 'POST', body: {} }),
   geocodeDesign: (q) => request('/crm/design/geocode', { method: 'POST', body: { q } }),
+
+  solarProjects: (params = {}) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set('q', params.q);
+    if (params.lead_id) qs.set('lead_id', params.lead_id);
+    if (params.status) qs.set('status', params.status);
+    const s = qs.toString();
+    return request(`/crm/solar-projects${s ? `?${s}` : ''}`);
+  },
+  getSolarProject: (id) => request(`/crm/solar-projects/${id}`),
+  createSolarProject: (data) => request('/crm/solar-projects', { method: 'POST', body: data }),
+  createSolarProjectFromLead: (leadId) => request(`/crm/solar-projects/from-lead/${leadId}`, { method: 'POST' }),
+  patchSolarProject: (id, data) => request(`/crm/solar-projects/${id}`, { method: 'PATCH', body: data }),
+  deleteSolarProject: (id) => request(`/crm/solar-projects/${id}`, { method: 'DELETE' }),
+  getTariff: (id) => request(`/crm/solar-projects/${id}/tariff`),
+  saveTariff: (id, data) => request(`/crm/solar-projects/${id}/tariff`, { method: 'PUT', body: data }),
+  getConsumption: (id) => request(`/crm/solar-projects/${id}/consumption`),
+  saveConsumption: (id, data) => request(`/crm/solar-projects/${id}/consumption`, { method: 'PUT', body: data }),
+  consumptionFromBill: (id, data) => request(`/crm/solar-projects/${id}/consumption/from-bill`, { method: 'POST', body: data }),
+  uploadInterval: (id, file, which = 'current') => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return request(`/crm/solar-projects/${id}/consumption/interval?which=${encodeURIComponent(which)}`, { method: 'POST', formData: fd });
+  },
+  projectDesigns: (id) => request(`/crm/solar-projects/${id}/designs`),
+  createProjectDesign: (id, data) => request(`/crm/solar-projects/${id}/designs`, { method: 'POST', body: data }),
+  patchProjectDesign: (id, designId, data) => request(`/crm/solar-projects/${id}/designs/${designId}`, { method: 'PATCH', body: data }),
+  deleteProjectDesign: (id, designId) => request(`/crm/solar-projects/${id}/designs/${designId}`, { method: 'DELETE' }),
+  defaultsProfiles: () => request('/crm/defaults-profiles'),
+  createDefaultsProfile: (data) => request('/crm/defaults-profiles', { method: 'POST', body: data }),
+  saveDefaultsProfile: (id, data) => request(`/crm/defaults-profiles/${id}`, { method: 'PUT', body: data }),
+  deleteDefaultsProfile: (id) => request(`/crm/defaults-profiles/${id}`, { method: 'DELETE' }),
+
+  getProposal: (designId) => request(`/crm/designs/${designId}/proposal`),
+  generateProposal: (designId, data) => request(`/crm/designs/${designId}/proposal`, { method: 'POST', body: data || {} }),
+  patchProposal: (designId, data) => request(`/crm/designs/${designId}/proposal`, { method: 'PATCH', body: data }),
+  shareProposal: (designId) => request(`/crm/designs/${designId}/proposal/share`, { method: 'POST', body: {} }),
+  publicProposal: (token) => request(`/public/proposal/${token}`),
+  pricingTemplates: () => request('/crm/pricing-templates'),
+  subsidySettings: () => request('/crm/subsidy-settings'),
+  saveSubsidySettings: (data) => request('/crm/subsidy-settings', { method: 'PUT', body: data }),
 
   inventory: () => request('/crm/inventory'),
   whatsappLogs: () => request('/crm/whatsapp/logs'),

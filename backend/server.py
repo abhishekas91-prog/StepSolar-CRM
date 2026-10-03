@@ -15,6 +15,10 @@ restricted server-side to the stage's owner role, or Admin):
 - POST  /api/crm/leads/import bulk CSV (National Portal / PM Surya Ghar dump)
 - PATCH /api/crm/leads/{id}   partial update (any of: stages, quotation, invoice, contact fields)
 - GET   /api/crm/meta         return {nextLeadCode} for display
+- GET/POST /api/crm/solar-projects  Design Projects CRUD (Arka360-style; not ops /projects)
+- GET/PUT  /api/crm/solar-projects/{id}/tariff|consumption
+- GET/POST /api/crm/solar-projects/{id}/designs
+- GET/POST /api/crm/defaults-profiles
 
 Admin user management (super@stepsolar.in only — /api/admin/*):
 - GET   /api/admin/users              list all login users (no password hashes)
@@ -42,7 +46,7 @@ from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -60,6 +64,10 @@ from lead_service import (
     sheets_enabled,
 )
 from solar_engine import INVERTER_CATALOG, PANEL_CATALOG, simulate as simulate_design
+from energy_engine import generate_energy
+from irradiance import compute_irradiance
+import solar_project_api
+import proposal_api
 from services.pdf_docs import generate_document_pdf
 from services.whatsapp_service import (
     WHATSAPP_EVENTS,
@@ -97,6 +105,14 @@ whatsapp_logs_collection = db["whatsapp_logs"]
 inventory_collection = db["inventory"]
 settings_collection = db["settings"]
 designs_collection = db["pv_designs"]
+solar_projects_collection = db["solar_projects"]
+tariff_profiles_collection = db["tariff_profiles"]
+consumption_profiles_collection = db["consumption_profiles"]
+nested_designs_collection = db["designs"]
+defaults_profiles_collection = db["defaults_profiles"]
+irradiance_cache_collection = db["irradiance_cache"]
+proposals_collection = db["proposals"]
+pricing_templates_collection = db["pricing_templates"]
 
 
 # --------------------------------------------------------------------------- #
@@ -2535,6 +2551,94 @@ async def crm_simulate_design(
     return {"design": _design_public(merged), "result": result}
 
 
+class GenerateBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    shading_factor: Optional[float] = Field(default=None, ge=0.5, le=1.0)
+    system_losses: Optional[float] = Field(default=None, ge=0, le=0.45)
+
+
+async def _consumption_for_design(design: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    project_id = design.get("solar_project_id")
+    if not project_id and design.get("lead_id"):
+        proj = await solar_projects_collection.find_one({"lead_id": design["lead_id"]}, {"_id": 0, "id": 1}, sort=[("updated_at", -1)])
+        if proj:
+            project_id = proj.get("id")
+    if not project_id:
+        return None
+    return await consumption_profiles_collection.find_one({"project_id": project_id}, {"_id": 0})
+
+
+async def _run_generate(design: Dict[str, Any], payload: Optional[GenerateBody]) -> Dict[str, Any]:
+    consumption = await _consumption_for_design(design)
+    shade = payload.shading_factor if payload else None
+    losses = payload.system_losses if payload else None
+    if shade is None:
+        irr = design.get("irradiance") or {}
+        if irr.get("solar_access"):
+            shade = irr["solar_access"]
+    generation = generate_energy(design, consumption=consumption, shading_factor=shade, system_losses=losses)
+    now = datetime.now(timezone.utc).isoformat()
+    await designs_collection.update_one(
+        {"id": design["id"]},
+        {"$set": {
+            "generation": generation,
+            "updated_at": now,
+            "status": design.get("status") or "generated",
+        }},
+    )
+    return generation
+
+
+@crm.post("/designs/{design_id}/generate")
+async def crm_generate_design(
+    design_id: str,
+    payload: Optional[GenerateBody] = None,
+    user: CurrentUser = Depends(get_current_user),
+):
+    existing = await designs_collection.find_one({"id": design_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Design not found")
+    generation = await _run_generate(existing, payload)
+    doc = await designs_collection.find_one({"id": design_id}, {"_id": 0})
+    return {"design": doc, "generation": generation}
+
+
+@api.post("/design/designs/{design_id}/generate")
+async def api_generate_design_alias(
+    design_id: str,
+    payload: Optional[GenerateBody] = None,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await crm_generate_design(design_id, payload, user)
+
+
+@crm.post("/designs/{design_id}/irradiance")
+async def crm_design_irradiance(design_id: str, user: CurrentUser = Depends(get_current_user)):
+    existing = await designs_collection.find_one({"id": design_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Design not found")
+    computed = compute_irradiance(existing)
+    key = computed.get("cache_key")
+    cached = await irradiance_cache_collection.find_one({"cache_key": key}, {"_id": 0}) if key else None
+    if cached and cached.get("solar_access"):
+        irradiance = cached
+        irradiance["cached"] = True
+    else:
+        irradiance = computed
+        irradiance["cached"] = False
+        await irradiance_cache_collection.update_one(
+            {"cache_key": key},
+            {"$set": {**irradiance, "updated_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+    now = datetime.now(timezone.utc).isoformat()
+    await designs_collection.update_one(
+        {"id": design_id},
+        {"$set": {"irradiance": irradiance, "updated_at": now}},
+    )
+    return irradiance
+
+
 @crm.post("/leads/{lead_id}/design/simulate")
 async def crm_simulate_lead_design(
     lead_id: str,
@@ -3032,6 +3136,43 @@ async def _public_lead_or_404(token: str) -> Dict[str, Any]:
     return lead
 
 
+@app.get("/api/public/proposal/{token}")
+async def public_proposal(token: str):
+    doc = await proposals_collection.find_one({"public_token": token}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    design = await designs_collection.find_one({"id": doc.get("design_id")}, {"_id": 0})
+    return {
+        "ok": True,
+        "proposal": doc,
+        "design": {
+            "id": (design or {}).get("id"),
+            "name": (design or {}).get("name"),
+            "address": (design or {}).get("address"),
+            "location": (design or {}).get("location"),
+            "roofs": (design or {}).get("roofs") or [],
+            "obstructions": (design or {}).get("obstructions") or [],
+            "result": (design or {}).get("result"),
+            "generation": (design or {}).get("generation"),
+        } if design else None,
+    }
+
+
+@app.get("/api/public/proposal/{token}/pdf")
+async def public_proposal_pdf(token: str):
+    from proposal_pdf import generate_proposal_pdf as _pdf
+
+    doc = await proposals_collection.find_one({"public_token": token}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    data, filename = _pdf(doc, public_url=doc.get("public_url") or "")
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/api/track/{token}")
 async def public_track(token: str):
     lead = await _public_lead_or_404(token)
@@ -3230,6 +3371,42 @@ async def admin_patch_user(user_id: str, payload: AdminUserPatch, user: CurrentU
     return _user_out(result)
 
 
+solar_project_api.bind(
+    solar_projects=solar_projects_collection,
+    tariff_profiles=tariff_profiles_collection,
+    consumption_profiles=consumption_profiles_collection,
+    designs=nested_designs_collection,
+    defaults_profiles=defaults_profiles_collection,
+    pv_designs=designs_collection,
+    leads=leads_collection,
+    meta=meta_collection,
+    CurrentUser=CurrentUser,
+    get_current_user=get_current_user,
+    require_admin=require_admin,
+    get_lead=_get_lead_or_404,
+    push_activity=_push_activity,
+)
+solar_project_api.register()
+crm.include_router(solar_project_api.router)
+
+proposal_api.bind(
+    proposals=proposals_collection,
+    pricing_templates=pricing_templates_collection,
+    settings=settings_collection,
+    pv_designs=designs_collection,
+    solar_projects=solar_projects_collection,
+    tariff_profiles=tariff_profiles_collection,
+    consumption_profiles=consumption_profiles_collection,
+    leads=leads_collection,
+    CurrentUser=CurrentUser,
+    get_current_user=get_current_user,
+    require_admin=require_admin,
+    push_activity=_push_activity,
+    notify_whatsapp=_notify_whatsapp,
+)
+proposal_api.register()
+crm.include_router(proposal_api.router)
+
 api.include_router(admin_router)
 api.include_router(crm)
 app.include_router(api)
@@ -3373,6 +3550,22 @@ async def _startup():
     await inventory_collection.create_index("serial", sparse=True)
     await designs_collection.create_index("id", unique=True)
     await designs_collection.create_index([("lead_id", 1), ("updated_at", -1)])
+    await solar_projects_collection.create_index("id", unique=True)
+    await solar_projects_collection.create_index("code", unique=True, sparse=True)
+    await solar_projects_collection.create_index([("updated_at", -1)])
+    await solar_projects_collection.create_index([("lead_id", 1), ("updated_at", -1)])
+    await tariff_profiles_collection.create_index("project_id", unique=True)
+    await consumption_profiles_collection.create_index("project_id", unique=True)
+    await nested_designs_collection.create_index("id", unique=True)
+    await nested_designs_collection.create_index([("project_id", 1), ("created_at", -1)])
+    await defaults_profiles_collection.create_index("id", unique=True)
+    await defaults_profiles_collection.create_index("name", unique=True)
+    await irradiance_cache_collection.create_index("cache_key", unique=True)
+    await proposals_collection.create_index("id", unique=True)
+    await proposals_collection.create_index("design_id", unique=True)
+    await proposals_collection.create_index("public_token", unique=True, sparse=True)
+    await pricing_templates_collection.create_index("id", unique=True)
+    await solar_project_api._seed_defaults()
     await _seed_default_admin()
     await _migrate_legacy_leads()
     set_runtime_config(await _load_whatsapp_settings())

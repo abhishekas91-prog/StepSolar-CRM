@@ -123,6 +123,7 @@ function Header({ lead, toast }) {
         <button className="btn btn-whatsapp btn-sm" onClick={() => setChatOpen(true)}><Icon name="whatsapp" size={14} /> WhatsApp</button>
         {trackUrl && <a className="btn btn-outline btn-sm" href={trackUrl} target="_blank" rel="noreferrer"><Icon name="link" size={14} /> Tracking Portal</a>}
         <button className="btn btn-outline btn-sm" onClick={() => setAssignOpen(true)}><Icon name="users" size={14} /> Assign</button>
+        <button className="btn btn-outline btn-sm" onClick={() => navigate(`/pv-projects?lead=${lead.id}&new=1`)}><Icon name="sun" size={14} /> Design Project</button>
         <button className="btn btn-primary btn-sm" onClick={() => navigate(`/design?lead=${lead.id}`)}><Icon name="sun" size={14} /> PV Design Studio</button>
         <div style={{ flex: 1 }} />
         {lead.quotation && (
