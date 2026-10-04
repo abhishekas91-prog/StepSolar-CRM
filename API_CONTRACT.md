@@ -27,6 +27,7 @@ Base URL: `https://stepsolar-backend.onrender.com/api`
 | `GET /crm/leads/{id}` | Project detail | Full lead doc incl. `stages[]` |
 | `PATCH /crm/leads/{id}` | Stage status/notes/location update | body `{stages: [...]}` — **must send the full stages array**, only the target stage's fields changed, same order/keys as received. Role-based: non-Admin can only change stages where `stage.owner === my role`. |
 | `POST /crm/leads/{id}/stages/{stage_key}/documents` | Proof photo upload | multipart `file` field. Role must be in `_can_manage_docs` (Admin/Sales/Site Survey/Installation/Accounts — currently everyone). |
+| `POST /crm/leads/{id}/whatsapp/document` | Send quotation/invoice/receipt/pv-design via WaCRM | body `{document_type, document_no?, message?, doc_id?}`. Optional `doc_id` uses an uploaded file. `pv-design`/`design` generates PDF from that design id or the lead's latest simulated design. Returns `{ok, status, channel, filename}`. |
 | `GET /crm/whatsapp/chat?phone=` | In-app WhatsApp history | WaCRM proxy. Returns `{messages, contact, conversation_id}`. |
 | `POST /crm/whatsapp/chat` | Send WhatsApp text | body `{phone, text}` via WaCRM Business API. |
 

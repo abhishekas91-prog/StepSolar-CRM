@@ -608,14 +608,92 @@ def _receipt_pdf(lead: Dict[str, Any], payment: Dict[str, Any]) -> bytes:
     return bytes(pdf.output())
 
 
+def _pv_design_pdf(lead: Dict[str, Any], design: Optional[Dict[str, Any]] = None) -> bytes:
+    design = design or {}
+    result = design.get("result") or {}
+    sys = result.get("system") or {}
+    prod = result.get("production") or {}
+    fin = result.get("financials") or {}
+    panel = result.get("panel") or {}
+    inv = result.get("inverter") or {}
+    loc = design.get("location") or {}
+    pdf = StepPDF("Remote PV Design")
+    pdf.add_page()
+    y = pdf.get_y()
+    pdf.draw_logo(pdf.l_margin + 2, y, 18)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(pdf.usable, 7, COMPANY["name"], align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 8)
+    pdf.cell(pdf.usable, 4.5, f"{COMPANY['branch']}  |  {COMPANY['phone']}  |  {COMPANY['email']}", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.ln(2)
+    pdf.cell(pdf.usable, 8, "REMOTE PV DESIGN", border=1, align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.kv_row([
+        ("Prepared for", _lead_name(lead), 32, pdf.usable / 2 - 32),
+        ("Lead", _esc(lead.get("code")), 28, pdf.usable / 2 - 28),
+    ])
+    pdf.kv_row([
+        ("Phone", _lead_phone(lead), 32, pdf.usable / 2 - 32),
+        ("Date", _fmt_date(design.get("updated_at")), 28, pdf.usable / 2 - 28),
+    ])
+    pdf.kv_row([("Site", _lead_address(lead), 32, pdf.usable - 32)])
+    lat, lng = loc.get("lat"), loc.get("lng")
+    pdf.kv_row([
+        ("GPS", f"{lat or '-'}, {lng or '-'}", 32, pdf.usable / 2 - 32),
+        ("Modules", str(sys.get("panel_count") or "-"), 28, pdf.usable / 2 - 28),
+    ])
+    pdf.section("System summary")
+    pdf.kv_row([
+        ("DC size", f"{_num(sys.get('dc_kw')):.2f} kWp", 32, pdf.usable / 2 - 32),
+        ("AC size", f"{_num(sys.get('ac_kw')):.2f} kW", 28, pdf.usable / 2 - 28),
+    ])
+    pdf.kv_row([
+        ("Year-1 generation", f"{int(_num(prod.get('year1_kwh')))} kWh", 40, pdf.usable / 2 - 40),
+        ("Specific yield", f"{int(_num(prod.get('specific_yield')))} kWh/kWp", 36, pdf.usable / 2 - 36),
+    ])
+    pdf.kv_row([
+        ("Module", _esc(f"{panel.get('brand') or ''} {panel.get('model') or ''} {panel.get('watt') or ''}W".strip()), 32, pdf.usable - 32),
+    ])
+    pdf.kv_row([
+        ("Inverter", _esc(f"{inv.get('brand') or ''} {inv.get('model') or ''}".strip() or "-"), 32, pdf.usable - 32),
+    ])
+    pdf.section("Financials")
+    pdf.kv_row([
+        ("System price", _inr(fin.get("capex") or fin.get("epc_target") or (result.get("bom") or {}).get("epc_target")), 40, pdf.usable / 2 - 40),
+        ("Payback", f"{fin.get('payback_years') or '-'} yr", 36, pdf.usable / 2 - 36),
+    ])
+    pdf.kv_row([
+        ("Year-1 savings", _inr(fin.get("savings_y1")), 40, pdf.usable / 2 - 40),
+        ("IRR", f"{(fin.get('irr') or 0) * 100:.1f}%" if fin.get("irr") is not None else "-", 36, pdf.usable / 2 - 36),
+    ])
+    months = prod.get("months") or ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    monthly = prod.get("monthly_kwh") or []
+    if monthly:
+        pdf.section("Monthly generation (kWh)")
+        pdf.set_font("Helvetica", "", 8)
+        line = "   ".join(
+            f"{months[i] if i < len(months) else i + 1} {int(_num(v))}"
+            for i, v in enumerate(monthly[:12])
+        )
+        pdf.multi_cell(pdf.usable, 4.5, line)
+    pdf.set_font("Helvetica", "I", 7.5)
+    pdf.ln(4)
+    pdf.multi_cell(pdf.usable, 4, "Generation is modelled. Actual output varies with weather, shading and DISCOM rules. GST extra as applicable.")
+    return bytes(pdf.output())
+
+
 def generate_document_pdf(
     lead: Dict[str, Any],
     doc_type: str,
     payment: Optional[Dict[str, Any]] = None,
+    design: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bytes, str]:
-    """Return (pdf_bytes, filename) for quotation / invoice / receipt."""
-    kind = (doc_type or "document").strip().lower()
+    """Return (pdf_bytes, filename) for quotation / invoice / receipt / pv-design."""
+    kind = (doc_type or "document").strip().lower().replace("_", "-")
     code = _esc(lead.get("code") or "doc")
+    if kind in {"pv-design", "design"}:
+        data = _pv_design_pdf(lead, design)
+        return data, f"PV-Design-{code}.pdf".replace(" ", "-")
     if kind in {"quotation", "commercial"}:
         q = lead.get("quotation") or {}
         number = _esc(q.get("number") or code)
