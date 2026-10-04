@@ -2772,6 +2772,7 @@ async def crm_whatsapp_document(
     if not phone:
         raise HTTPException(status_code=400, detail="Lead has no valid phone number")
     doc_type = (payload.document_type or "document").strip() or "document"
+    doc_kind = doc_type.lower().replace("_", "-")
     doc_no = (payload.document_no or "").strip()
     label = {
         "quotation": "quotation",
@@ -2780,18 +2781,36 @@ async def crm_whatsapp_document(
         "receipt": "payment receipt",
         "photo": "site photo",
         "file": "document",
-    }.get(doc_type.lower(), doc_type)
+        "pv-design": "PV design",
+        "design": "PV design",
+    }.get(doc_kind, doc_type)
     name = (lead.get("full_name") or lead.get("name") or "there").split(" ")[0]
     code = lead.get("code") or ""
     track = _tracking_url(lead) or ""
-    caption = (payload.message or "").strip() or (
-        f"Hi {name}, your {label} {doc_no} for {code} is ready from Step Solar."
-    )
+    if payload.message:
+        caption = payload.message.strip()
+    elif doc_kind in {"pv-design", "design"}:
+        caption = f"Hi {name}, your PV design for {code} is ready from Step Solar."
+    else:
+        caption = f"Hi {name}, your {label} {doc_no} for {code} is ready from Step Solar."
 
     media_url = None
     media_kind = None
     filename = None
     token = lead.get("tracking_token")
+
+    async def _ensure_token() -> str:
+        tok = lead.get("tracking_token")
+        if tok:
+            return tok
+        tok = _new_tracking_token()
+        await leads_collection.update_one(
+            {"id": lead_id},
+            {"$set": {"tracking_token": tok, "tracking_visible": True}},
+        )
+        lead["tracking_token"] = tok
+        lead["tracking_visible"] = True
+        return tok
 
     if payload.doc_id:
         stored = await documents_collection.find_one(
@@ -2800,8 +2819,7 @@ async def crm_whatsapp_document(
         )
         if not stored:
             raise HTTPException(status_code=404, detail="Document not found")
-        if not token:
-            raise HTTPException(status_code=400, detail="Lead has no tracking token")
+        token = await _ensure_token()
         media_url = f"{base_url()}/api/track/{token}/documents/{payload.doc_id}"
         filename = stored.get("name") or "document"
         ctype = str(stored.get("content_type") or "")
@@ -2809,34 +2827,37 @@ async def crm_whatsapp_document(
             media_kind = "image"
         else:
             media_kind = "document"
-    elif doc_type.lower() in {"quotation", "commercial", "invoice", "receipt"}:
+    elif doc_kind in {"quotation", "commercial", "invoice", "receipt", "pv-design", "design"}:
         payment = None
-        if doc_type.lower() == "quotation" and not lead.get("quotation"):
+        design = None
+        if doc_kind == "quotation" and not lead.get("quotation"):
             raise HTTPException(status_code=400, detail="Create a quotation first")
-        if doc_type.lower() == "commercial" and not lead.get("quotation"):
+        if doc_kind == "commercial" and not lead.get("quotation"):
             raise HTTPException(status_code=400, detail="Create a quotation first")
-        if doc_type.lower() == "invoice" and not lead.get("invoice"):
+        if doc_kind == "invoice" and not lead.get("invoice"):
             raise HTTPException(status_code=400, detail="Create an invoice first")
-        if doc_type.lower() == "receipt":
+        if doc_kind == "receipt":
             payment = _payment_from_lead(lead, payload.payment_id, doc_no)
             if not payment:
                 raise HTTPException(status_code=400, detail="Receipt payment not found")
             if not doc_no:
                 doc_no = str(payment.get("receiptNo") or "")
+        if doc_kind in {"pv-design", "design"}:
+            if doc_no:
+                design = await designs_collection.find_one({"id": doc_no})
+                if design and design.get("lead_id") and design["lead_id"] != lead_id:
+                    raise HTTPException(status_code=404, detail="Design not found")
+            if not design:
+                design = await designs_collection.find_one({"lead_id": lead_id}, sort=[("updated_at", -1)])
+            if not design or not ((design.get("result") or {}).get("system")):
+                raise HTTPException(status_code=400, detail="Simulate the PV design first")
         try:
-            pdf_bytes, filename = generate_document_pdf(lead, doc_type.lower(), payment)
+            pdf_bytes, filename = generate_document_pdf(lead, doc_kind, payment, design)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        if not token:
-            token = _new_tracking_token()
-        await leads_collection.update_one(
-            {"id": lead_id},
-            {"$set": {"tracking_token": token, "tracking_visible": True}},
-        )
-        lead["tracking_token"] = token
-        lead["tracking_visible"] = True
+        token = await _ensure_token()
         track = _tracking_url(lead) or track
-        stored_id = await _store_generated_pdf(lead, pdf_bytes, filename, doc_type.lower())
+        stored_id = await _store_generated_pdf(lead, pdf_bytes, filename, doc_kind)
         media_url = f"{base_url()}/api/track/{token}/documents/{stored_id}"
         media_kind = "document"
 
